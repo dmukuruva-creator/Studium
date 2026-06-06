@@ -152,6 +152,10 @@ input.inp{height:42px}
 .rb-due{font-size:11px;color:var(--dim);margin-top:1px}
 /* Source citation */
 .src-cite{display:inline-block;font-family:var(--sans);font-size:11px;color:var(--mut);background:var(--surf);border:1px solid var(--brd);border-radius:20px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+/* KaTeX math rendering */
+.math-rich .katex{font-size:1em}
+.math-rich .katex-display{overflow-x:auto;overflow-y:hidden;margin:.5em 0;white-space:normal}
+.math-rich .katex-html{white-space:normal}
 </style>
 </head>
 <body>
@@ -2159,7 +2163,13 @@ async function todaySubmitQ() {
     var raw = await streamGrade(q, a, function(full) {
       S.todayGrading.text = full;
       var el = document.getElementById('today-grade-stream');
-      if (el) { el.innerHTML = esc(extractStreamFeedback(full) || '•••'); }
+      if (el) {
+        el.innerHTML = esc(extractStreamFeedback(full) || '•••');
+        clearTimeout(_mathStreamTimer);
+        _mathStreamTimer = setTimeout(function() {
+          if (window.renderMathInElement && el.parentNode) { try { renderMathInElement(el, _katexOpts); } catch(e) {} }
+        }, 120);
+      }
     });
     S.todayGrading = null;
     S.todayResult = pj(raw);
@@ -2265,17 +2275,8 @@ function quizQuestionCount(text) {
 
 function renderMathInView() {
   if (!window.renderMathInElement) return;
-  var view = document.getElementById('view');
-  if (!view) return;
-  window.renderMathInElement(view, {
-    delimiters: [
-      { left: '$$', right: '$$', display: true },
-      { left: '\\[', right: '\\]', display: true },
-      { left: '\\(', right: '\\)', display: false },
-      { left: '$', right: '$', display: false },
-    ],
-    throwOnError: false,
-    ignoredTags: ['script','noscript','style','textarea','pre','code'],
+  document.querySelectorAll('#view .math-rich').forEach(function(el) {
+    try { window.renderMathInElement(el, _katexOpts); } catch(e) {}
   });
 }
 function mapLabel(s) {
@@ -2324,6 +2325,24 @@ var _keyTimers = {};
 var _gradingStream = null;
 var _hintShown = false;
 var _mathStreamTimer = null;
+var _katexOpts = {
+  delimiters: [
+    { left: '$$',   right: '$$',   display: true  },
+    { left: '\\[',  right: '\\]',  display: true  },
+    { left: '\\(',  right: '\\)',  display: false },
+    { left: '$',    right: '$',    display: false },
+  ],
+  throwOnError: false,
+  ignoredTags: ['script','noscript','style','textarea','pre','code','input','select'],
+  macros: {
+    '\\R': '\\mathbb{R}',
+    '\\N': '\\mathbb{N}',
+    '\\Z': '\\mathbb{Z}',
+    '\\Q': '\\mathbb{Q}',
+    '\\C': '\\mathbb{C}',
+    '\\d': '\\,\\mathrm{d}',
+  },
+};
 var _activeAbort = null;
 var _abortTimeout = null;
 function toast(msg) {
@@ -2580,7 +2599,7 @@ function renderQuiz() {
       + '<div style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 1s ease-in-out infinite;flex-shrink:0"></div>'
       + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em">Grading</span>'
       + '</div>'
-      + '<p id="grade-stream" style="font-family:var(--serif);font-size:15px;line-height:1.7;color:var(--tx);min-height:52px">'
+      + '<p id="grade-stream" class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;color:var(--tx);min-height:52px">'
       + esc(previewText || '•••')
       + '</p>'
       + '</div>';
@@ -3362,7 +3381,7 @@ function renderToday() {
         + '<div style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 1s ease-in-out infinite;flex-shrink:0"></div>'
         + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em">Grading</span>'
         + '</div>'
-        + '<p id="today-grade-stream" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + esc(prevText || '•••') + '</p>'
+        + '<p id="today-grade-stream" class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + esc(prevText || '•••') + '</p>'
         + '</div>';
     } else if (S.todayResult) {
       var tsc = S.todayResult.score;
@@ -4915,10 +4934,7 @@ async function submitQ() {
         el.innerHTML = esc(preview || '•••');
         clearTimeout(_mathStreamTimer);
         _mathStreamTimer = setTimeout(function() {
-          if (window.renderMathInElement && el.parentNode) renderMathInElement(el, {
-            delimiters: [{ left:'$$',right:'$$',display:true },{ left:'\\[',right:'\\]',display:true },{ left:'\\(',right:'\\)',display:false },{ left:'$',right:'$',display:false }],
-            throwOnError: false,
-          });
+          if (window.renderMathInElement && el.parentNode) { try { renderMathInElement(el, _katexOpts); } catch(e) {} }
         }, 120);
       }
     });
