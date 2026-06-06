@@ -300,6 +300,8 @@ const S = {
   todayAns: '', todayResult: null, todayGrading: null, todayBuilding: false,
   todayStats: null,
   missedQOffer: null,
+  profile: { level: '', goal: '' },
+  solveInput: '', solveResult: null, solveBusy: false,
   extractWarnings: [],
   coverage: {}, // {sectionTitle: {quizzed:N, carded:N}}
   meta: { dailyNewCap: 10, examDate: null, suspendedCards: [], calibration: { total: 0, overconfident: 0 } },
@@ -307,7 +309,7 @@ const S = {
     activeModel: 'claude-sonnet-4-6',
     anthropicKey: '', openaiKey: '', googleKey: '',
     openaiCompatibleKey: '', openaiCompatibleBaseUrl: '',
-    autoFallback: true, visionOcr: false, routingMode: 'hybrid', usage: {},
+    autoFallback: true, visionOcr: false, routingMode: 'hybrid', persona: 'tutor', usage: {},
   },
   // v5 IA state
   studyIntent: null,       // 'review'|'drill'|'exam'|'learn'|'explain'|null
@@ -553,9 +555,12 @@ async function loadState() {
     if (cfg.autoFallback != null) S.cfg.autoFallback = cfg.autoFallback;
     if (cfg.visionOcr != null) S.cfg.visionOcr = cfg.visionOcr;
     if (cfg.routingMode) S.cfg.routingMode = cfg.routingMode;
+    if (cfg.persona) S.cfg.persona = cfg.persona;
     if (cfg.openaiCompatibleBaseUrl) S.cfg.openaiCompatibleBaseUrl = cfg.openaiCompatibleBaseUrl;
     if (cfg.usage) S.cfg.usage = cfg.usage;
   }
+  var prof = lsGet('sd_profile');
+  if (prof && typeof prof === 'object') S.profile = { level: prof.level || '', goal: prof.goal || '' };
   var legacy = lsGet('sd_settings');
   if (legacy) {
     if (legacy.activeModelId) S.cfg.activeModel = legacy.activeModelId;
@@ -2345,6 +2350,8 @@ var _katexOpts = {
 };
 var _activeAbort = null;
 var _abortTimeout = null;
+var _showMoreIntents = false;
+function toggleMoreIntents() { _showMoreIntents = !_showMoreIntents; render(); }
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.style.display = 'block'; el.style.opacity = '1';
@@ -3824,6 +3831,51 @@ function renderStudy() {
   return renderStudyHome();
 }
 
+function _intentOnclick(id) {
+  return id === 'review' ? "startTodaySession('standard')" : "goStudyIntent('" + id + "')";
+}
+
+// Pick the highest-impact session for the user's current state, with a plain
+// reason grounded in learning science. Goal: comprehension, grades, and skill.
+function recommendSession() {
+  if (!S.docs.length) return null;
+  var plan = examSchedulePlan();
+  var due = S.cards.filter(function(c) { return !isCardSuspended(c) && c.fsrs && fsrsIsDue(c.fsrs); }).length;
+  var insights = getAnalyticsInsights();
+  var weak = insights.weakTopics || [];
+  var readiness = (plan.days !== null) ? computeReadiness() : null;
+  var secs = []; try { secs = studySections(); } catch (e) {}
+  var cov = S.coverage || {};
+  var untested = secs.filter(function(s) { var c = cov[s.title]; return !c || ((c.quizzed || 0) === 0 && (c.carded || 0) === 0); }).length;
+  var dayWord = function(n) { return n + ' day' + (n === 1 ? '' : 's'); };
+
+  // 1 — Exam imminent: test under real conditions, but clear a big spaced backlog first.
+  if (plan.days !== null && plan.days <= 7) {
+    if (due >= 15) return { id: 'review', reason: 'Your exam is in ' + dayWord(Math.max(0, plan.days)) + ' and ' + due + ' cards are due. Clear the spaced-review backlog first so nothing you already learned slips before the test.', cta: 'Start review' };
+    return { id: 'exam', reason: 'Your exam is in ' + dayWord(Math.max(0, plan.days)) + (readiness ? ' and readiness is ' + readiness.pct + '%' : '') + '. A timed mock under real conditions is the most effective way to find and fix what will cost you marks — testing yourself beats re-reading (the testing effect).', cta: 'Start mock exam' };
+  }
+  // 2 — Due backlog: spaced retrieval is the highest-yield daily action.
+  if (due >= 5) {
+    return { id: 'review', reason: due + ' cards are due. Reviewing them right as you’re about to forget locks them in for the least effort — the spacing effect is the backbone of durable memory.', cta: 'Start review' };
+  }
+  // 3 — Un-studied material: comprehension must precede retrieval.
+  if (untested >= 1 && due < 5) {
+    return { id: 'learn', reason: 'You have ' + untested + ' section' + (untested === 1 ? '' : 's') + ' you haven’t worked through yet. Build understanding first with a grounded study guide — you can’t recall what you never encoded.', cta: 'Start learning' };
+  }
+  // 4 — One stubborn weak topic: self-explanation repairs deep gaps.
+  if (weak.length && (weak.length === 1 || weak[0].accuracy < 40)) {
+    return { id: 'explain', reason: 'You’re weakest on ' + esc(weak[0].topic) + ' (' + weak[0].accuracy + '%). Explaining it in your own words is the fastest way to expose and patch the gap — the Feynman technique.', cta: 'Explain it back' };
+  }
+  // 5 — Several weak topics: targeted retrieval practice builds breadth.
+  if (weak.length >= 2) {
+    return { id: 'drill', reason: 'You’re shaky on ' + weak.slice(0, 3).map(function(w) { return esc(w.topic); }).join(', ') + '. Pulling answers from memory (retrieval practice) turns weak topics solid far faster than re-reading.', cta: 'Start drilling' };
+  }
+  // 6 — Caught up: extend coverage, else keep retrieval sharp.
+  if (untested >= 1) return { id: 'learn', reason: 'You’re caught up on review. Extend your coverage by working through new material while it’s fresh.', cta: 'Learn something new' };
+  if (S.cards.length) return { id: 'exam', reason: 'You’re caught up. A quick timed test keeps retrieval sharp and proves you can perform under pressure, not just recognize the material.', cta: 'Test yourself' };
+  return { id: 'review', reason: 'Generate a few flashcards in Library, then come back — daily spaced review is what makes it stick.', cta: 'Start review' };
+}
+
 function renderStudyHome() {
   var plan = examSchedulePlan();
   var due = S.cards.filter(function(c) { return !isCardSuspended(c) && c.fsrs && fsrsIsDue(c.fsrs); });
@@ -3834,9 +3886,10 @@ function renderStudyHome() {
   var insights = getAnalyticsInsights();
   var hasDocs = S.docs.length > 0;
 
-  var greeting = '<div style="margin-bottom:28px">'
-    + '<p class="ph" style="margin:0;margin-bottom:4px">What do you want to do?</p>'
-    + '<p style="font-family:var(--sans);font-size:13px;color:var(--mut)">Pick a session type — the app will guide you through it.</p>'
+  var rec = recommendSession();
+  var greeting = '<div style="margin-bottom:24px">'
+    + '<p class="ph" style="margin:0;margin-bottom:4px">' + (rec ? 'Ready to study?' : 'What do you want to do?') + '</p>'
+    + '<p style="font-family:var(--sans);font-size:13px;color:var(--mut)">' + (rec ? 'We picked the highest-impact session for where you are right now.' : 'Pick a session type — the app will guide you through it.') + '</p>'
     + '</div>';
 
   // Stats ribbon
@@ -3850,29 +3903,73 @@ function renderStudyHome() {
     + '</div>';
 
   function intent(id, icon, title, desc, primary, disabled) {
-    var onclick = disabled ? '' : ' onclick="' + (id === 'review' ? 'startTodaySession(\'standard\')' : id === 'drill' ? 'goStudyIntent(\'drill\')' : id === 'exam' ? 'goStudyIntent(\'exam\')' : id === 'learn' ? 'goStudyIntent(\'learn\')' : 'goStudyIntent(\'explain\')') + '"';
+    var onclick = disabled ? '' : ' onclick="' + _intentOnclick(id) + '"';
     var disStyle = disabled ? 'opacity:.38;cursor:default;' : '';
     return '<div class="card" style="' + disStyle + 'margin-bottom:12px;cursor:pointer;border-left:3px solid ' + (primary ? 'var(--acc)' : 'var(--brd2)') + '"' + onclick + '>'
-      + '<div class="rowsb"><div style="display:flex;align-items:center;gap:12px">'
-      + '<div style="font-size:22px;line-height:1">' + icon + '</div>'
-      + '<div><p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx);margin-bottom:2px">' + title + '</p>'
+      + '<div class="rowsb"><div style="display:flex;align-items:center;gap:14px">'
+      + icon
+      + '<div><p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx);margin-bottom:2px">' + title + (primary ? ' <span style="font-size:10px;font-weight:700;color:var(--acc);background:var(--acc-b,transparent);border:1px solid var(--acc);border-radius:8px;padding:1px 6px;vertical-align:middle;margin-left:4px;letter-spacing:.04em">RECOMMENDED</span>' : '') + '</p>'
       + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut)">' + desc + '</p></div></div>'
       + (primary ? '<span style="font-family:var(--sans);font-size:12px;color:var(--acc);font-weight:700">&#x25B6;</span>' : '<span style="color:var(--dim)">&#x25B6;</span>')
       + '</div></div>';
   }
 
-  var iconAttrs = 'class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="vertical-align:middle;display:inline-block"';
-  var intents = intent('review', '<svg xmlns="http://www.w3.org/2000/svg" ' + iconAttrs + '><title>Review</title><path d="M21 12a9 9 0 1 0-3 6.7"/><polyline points="21 12 21 6 15 6"/></svg>', 'Review', total > 0 ? total + ' cards due · weak-topic recall · consolidation' : 'Catch up on cards + active recall on weak topics', true, !hasDocs)
-    + intent('drill', '<svg xmlns="http://www.w3.org/2000/svg" ' + iconAttrs + '><title>Drill</title><path d="M3 21v-3l11-11 3 3L6 21H3z"/><path d="M14 7l3 3"/></svg>', 'Drill', 'Free-recall questions or cloze · auto-graded or LLM-graded', false, !hasDocs)
-    + intent('exam', '<svg xmlns="http://www.w3.org/2000/svg" ' + iconAttrs + '><title>Mock Exam</title><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>', 'Mock Exam', 'Timed, scored test · feedback withheld until end · seeds review', false, !hasDocs)
-    + intent('learn', '<svg xmlns="http://www.w3.org/2000/svg" ' + iconAttrs + '><title>Learn</title><path d="M3 5v14a1 1 0 0 0 1 1h14V5H4a1 1 0 0 0-1 0z"/><path d="M21 6v14"/></svg>', 'Learn New', 'Grounded study guide for a section · on-demand explanations', false, !hasDocs)
-    + intent('explain', '<svg xmlns="http://www.w3.org/2000/svg" ' + iconAttrs + '><title>Explain</title><path d="M6 3h12l-2 6v5a4 4 0 0 1-4 4h-2a4 4 0 0 1-4-4V9L6 3z"/></svg>', 'Explain-back', 'You explain a topic · AI finds gaps against your notes → cards', false, !hasDocs);
+  var recId = rec ? rec.id : null;
+  function iconBox(col, paths) {
+    var ia = 'width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    return '<div style="width:40px;height:40px;border-radius:10px;background:' + col + '1a;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:' + col + '"><svg ' + ia + '>' + paths + '</svg></div>';
+  }
+  var SVG = {
+    // RotateCcw — spaced repetition cycling through cards
+    review:  iconBox('var(--acc)', '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
+    // Target / bullseye — focused, targeted practice
+    drill:   iconBox('#c49a3a',    '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'),
+    // ClipboardList — formal test with questions
+    exam:    iconBox('#e07b3a',    '<rect x="9" y="2" width="6" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>'),
+    // BookOpen — reading and studying new material
+    learn:   iconBox('#4c79f2',    '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'),
+    // MessageSquare — explaining in your own words
+    explain: iconBox('#7c5cbf',    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  };
+  var DEF = [
+    ['review', 'Review', total > 0 ? total + ' cards due · weak-topic recall · consolidation' : 'Catch up on cards + active recall on weak topics'],
+    ['drill', 'Drill', 'Free-recall questions or cloze · auto-graded or LLM-graded'],
+    ['exam', 'Mock Exam', 'Timed, scored test · feedback withheld until end · seeds review'],
+    ['learn', 'Learn New', 'Grounded study guide for a section · on-demand explanations'],
+    ['explain', 'Explain-back', 'You explain a topic · AI finds gaps against your notes → cards'],
+  ];
+  var renderList = function(excludeId) {
+    return DEF.filter(function(d) { return d[0] !== excludeId; })
+      .map(function(d) { return intent(d[0], SVG[d[0]], d[1], d[2], false, !hasDocs); }).join('');
+  };
 
-  var noDocs = !hasDocs ? '<div class="card" style="border-left:3px solid var(--acc);margin-bottom:16px">'
-    + '<p style="font-family:var(--sans);font-size:14px;color:var(--mut)">Upload study material in <strong onclick="setTab(\'library\')" style="color:var(--acc);cursor:pointer">Library</strong> to start a session.</p>'
-    + '</div>' : '';
+  // No recommendation (e.g., no documents yet) → show the full menu as before.
+  if (!rec) {
+    var noDocs = !hasDocs ? '<div class="card" style="border-left:3px solid var(--acc);margin-bottom:16px">'
+      + '<p style="font-family:var(--sans);font-size:14px;color:var(--mut)">Upload study material in <strong onclick="setTab(\'library\')" style="color:var(--acc);cursor:pointer">Library</strong> to start a session.</p>'
+      + '</div>' : '';
+    return greeting + noDocs + statsRibbon + renderList(null);
+  }
 
-  return greeting + noDocs + statsRibbon + intents;
+  // Recommendation present → lead with one obvious choice; the rest stay tucked away.
+  var RNAME = { review: 'Review', drill: 'Drill', exam: 'Mock Exam', learn: 'Learn New', explain: 'Explain-back' };
+  var banner = '<div class="card" style="border:1.5px solid var(--acc);margin-bottom:14px">'
+    + '<p style="font-family:var(--sans);font-size:11px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">&#x2605; Recommended for you</p>'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' + SVG[rec.id]
+    + '<p style="font-family:var(--sans);font-size:18px;font-weight:700;color:var(--tx)">' + (RNAME[rec.id] || 'Review') + '</p></div>'
+    + '<p style="font-family:var(--serif);font-size:14.5px;line-height:1.65;color:var(--mut);margin-bottom:16px">' + rec.reason + '</p>'
+    + '<button class="btn bp" style="padding:11px 26px" onclick="' + _intentOnclick(rec.id) + '">' + esc(rec.cta) + ' &rarr;</button>'
+    + '</div>';
+
+  var moreToggle = '<div style="text-align:center;margin-top:10px">'
+    + '<button onclick="toggleMoreIntents()" style="background:none;border:none;cursor:pointer;font-family:var(--sans);font-size:12.5px;color:var(--mut);padding:6px">'
+    + (_showMoreIntents ? 'Hide other sessions &#x25B4;' : 'Something else? Choose another session &#x25BE;')
+    + '</button></div>';
+  var moreBlock = _showMoreIntents
+    ? '<p style="font-family:var(--sans);font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 10px">Other session types</p>' + renderList(rec.id)
+    : '';
+
+  return greeting + statsRibbon + banner + moreToggle + moreBlock;
 }
 
 function _miniStat(val, lbl, col) {
