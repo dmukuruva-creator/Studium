@@ -433,6 +433,9 @@ function getSafeCfg() {
   return {
     activeModel: S.cfg.activeModel,
     autoFallback: S.cfg.autoFallback,
+    visionOcr: S.cfg.visionOcr,
+    routingMode: S.cfg.routingMode,
+    persona: S.cfg.persona,
     openaiCompatibleBaseUrl: S.cfg.openaiCompatibleBaseUrl || '',
     usage: S.cfg.usage || {},
   };
@@ -593,6 +596,26 @@ function saveCmap()  { _idbSaveCmap().catch(function() { lsSet('sd_cmap', S.cmap
 function saveHist()        { _idbSaveHist().catch(function() { lsSet('sd_hist', S.hist); }); }
 function saveCfg()         { lsSet('sd_cfg',          getSafeCfg());     }
 function saveMeta()        { lsSet('sd_meta',         S.meta);           }
+function saveProfile()     { lsSet('sd_profile',      S.profile);        }
+
+// Teaching personas (a lean take on DeepTutor's SKILL.md personas) — a style
+// prefix injected into generation/grading/explanation system prompts.
+var PERSONAS = {
+  tutor:       { name: 'Balanced Tutor',    sys: 'Teach clearly and directly, balancing rigor with encouragement.' },
+  socratic:    { name: 'Socratic',          sys: 'Favor probing questions and hints that lead the student toward the answer rather than stating it outright; in feedback, point at the gap without fully handing over the answer unless the response was wrong.' },
+  concise:     { name: 'Concise',           sys: 'Be terse and high-signal — the shortest correct explanation, no filler.' },
+  rigorous:    { name: 'Rigorous Examiner', sys: 'Hold a high bar like a demanding examiner. Insist on precision, flag every imprecision, and reward only complete, fully-correct answers.' },
+  encouraging: { name: 'Encouraging',       sys: 'Be warm and motivating. Acknowledge effort and progress while staying honest about errors.' },
+};
+
+// System-prompt prefix carrying the chosen persona + the learner profile (memory).
+function _personaSys() {
+  var p = PERSONAS[S.cfg.persona] || PERSONAS.tutor;
+  var parts = ['Teaching style: ' + p.sys];
+  if (S.profile && S.profile.level) parts.push('Student level: ' + S.profile.level + ' — calibrate difficulty and vocabulary to this.');
+  if (S.profile && S.profile.goal) parts.push('Student goal: ' + S.profile.goal + '.');
+  return parts.join(' ') + '\n\n';
+}
 function bumpSubjectsVersion() { S.subjectsVersion = (S.subjectsVersion || 0) + 1; _studyContextCache.version = -1; }
 function saveSubjects()    { bumpSubjectsVersion(); lsSet('sd_subjects',     S.subjects);       }
 function saveSubjectDocKey(){ lsSet('sd_subjectDocKey', S.subjectDocKey); }
@@ -1532,7 +1555,7 @@ function gradePayload(q, answer) {
     ? '\n\nSource notes (authoritative — evaluate against these, not the model answer alone):\n"""\n' + srcText + '\n"""'
     : '';
   var rubric = '\nEvaluate each criterion independently:\n- Correctness: is the core claim right?\n- Completeness: are key points covered?\n- Accuracy: no false statements?\nSum to a score 0-3.';
-  const sys = 'You are an expert academic evaluator. Evaluate the student answer against the source notes (when provided) and the model answer.' + rubric + ' Reply ONLY with valid JSON — no prose:\n{"correct":true/false,"score":0-3,"feedback":"1-2 concise sentences on what was right or wrong, naming the specific error","modelAnswer":"brief answer"}\nScoring: 3=fully correct, 2=mostly right, 1=partial, 0=wrong.';
+  const sys = _personaSys() + 'You are an expert academic evaluator. Evaluate the student answer against the source notes (when provided) and the model answer.' + rubric + ' Reply ONLY with valid JSON — no prose:\n{"correct":true/false,"score":0-3,"feedback":"1-2 concise sentences on what was right or wrong, naming the specific error","modelAnswer":"brief answer"}\nScoring: 3=fully correct, 2=mostly right, 1=partial, 0=wrong.';
   const user = 'Question: ' + q.question + '\nModel answer: ' + q.answer + '\nStudent answer: ' + answer + srcBlock;
   const max = 600;
   return { sys, user, max };
@@ -3657,6 +3680,83 @@ function renderStats() {
 // ════════════════════════════════════════════
 // RENDER — SETTINGS
 // ════════════════════════════════════════════
+// ── Solve intent (worked solution + self-verify) ──────────────────────────────
+function renderSolve() {
+  var back = '<button class="btn bg btn-sm" onclick="goStudyIntent(null)" style="margin-bottom:20px">&#x2190; Home</button>';
+  var header = '<p class="ph" style="margin:0 0 16px">Solve</p>';
+
+  if (S.solveBusy) {
+    return back + header + '<div class="card" style="text-align:center;padding:44px"><div class="spin"></div>'
+      + '<p style="font-family:var(--sans);font-size:14px;color:var(--mut);margin-top:16px">Working it out and double-checking each step…</p></div>';
+  }
+
+  if (S.solveResult) {
+    var r = S.solveResult;
+    var steps = (r.steps || []).map(function(s, i) {
+      return '<div style="display:flex;gap:11px;margin-bottom:12px">'
+        + '<span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#fff;font-family:var(--sans);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">' + (i + 1) + '</span>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;line-height:1.65;color:var(--tx)">' + esc(s) + '</p></div>';
+    }).join('');
+    var card = '<div class="card" style="margin-bottom:14px">'
+      + '<div class="rowsb" style="margin-bottom:10px"><p style="font-family:var(--sans);font-size:14px;font-weight:700;color:var(--tx)">Worked solution</p>'
+      + '<button class="btn bg btn-sm" onclick="S.solveResult=null;render()">New problem</button></div>'
+      + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:14px;white-space:pre-wrap">' + esc(r.problem || '') + '</p>'
+      + steps
+      + '<div style="padding:12px 14px;background:var(--card2);border:1px solid var(--brd);border-radius:8px;margin:8px 0 10px">'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Answer</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.6;color:var(--tx)">' + esc(r.answer || '') + '</p></div>'
+      + (r.verification ? '<div style="padding:10px 14px;border-left:3px solid var(--acc);background:var(--card)">'
+          + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;font-weight:700">Self-check</p>'
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--mut)">' + esc(r.verification) + '</p></div>' : '')
+      + '<button class="btn bg btn-sm" style="margin-top:14px" onclick="addSolveToReview()">+ Add to review deck</button>'
+      + '</div>';
+    return back + header + card;
+  }
+
+  var scopeNote = S.docs.length
+    ? '<p style="font-family:var(--sans);font-size:12px;color:var(--dim);margin-top:10px">Your current scope notes are used as context when relevant.</p>'
+    : '<p style="font-family:var(--sans);font-size:12px;color:var(--dim);margin-top:10px">Tip: upload notes in Library to ground solutions in your course’s methods.</p>';
+  var form = '<div class="card"><p class="sh" style="margin-bottom:10px">Enter a problem</p>'
+    + '<textarea class="inp" id="solve-in" placeholder="Paste or type a problem to solve step by step…" style="height:150px;margin-bottom:12px">' + esc(S.solveInput || '') + '</textarea>'
+    + '<button class="btn bp" onclick="startSolve()">Solve step by step</button>'
+    + scopeNote + '</div>';
+  return back + header + form;
+}
+
+async function startSolve() {
+  var el = document.getElementById('solve-in');
+  var problem = el ? el.value.trim() : (S.solveInput || '');
+  if (!problem) { toast('Enter a problem to solve.'); return; }
+  if (!hasKey(getActiveModel().prov)) { toast('Add an API key in Settings first.'); setTab('settings'); return; }
+  S.solveInput = problem; S.solveBusy = true; S.solveResult = null; render();
+  var notes = '';
+  if (S.docs.length) { try { var ctx = studyContext(); if (ctx && ctx.text) notes = contextText(ctx.text).slice(0, 6000); } catch (e) {} }
+  var srcBlock = notes ? '\n\nRelevant course notes (apply these methods; do not contradict them):\n"""\n' + notes + '\n"""' : '';
+  var sys = _personaSys() + 'You are a careful problem-solving tutor. Solve the problem step by step, showing the reasoning behind each step. Then VERIFY your own work: re-check each step and the final answer, fixing any error you find BEFORE you answer. Use LaTeX delimiters for math, such as \\(...\\) inline and $$...$$ for display. Reply ONLY with valid JSON — no prose outside it:\n{"steps":["step 1 with reasoning","step 2", "..."],"answer":"the final answer","verification":"what you re-checked and whether it holds"}';
+  try {
+    var raw = await callAI(sys, 'Problem:\n' + problem + srcBlock, 2600, 0.2);
+    var r = pj(raw);
+    if (!r || !Array.isArray(r.steps)) throw new Error('Could not produce a structured solution');
+    r.problem = problem;
+    S.solveResult = r;
+  } catch (e) {
+    toast('Solve failed: ' + e.message);
+  } finally {
+    S.solveBusy = false; render();
+  }
+}
+
+function addSolveToReview() {
+  var r = S.solveResult; if (!r) return;
+  _upsertReviewCard({
+    front: r.problem || '',
+    back: r.answer || ((r.steps || []).slice(-1)[0] || ''),
+    note: r.verification || '',
+    topic: 'Solved problems',
+    sourceSection: '',
+  });
+}
+
 function renderSettings() {
   var am = MODELS.find(function(m) { return m.id === S.cfg.activeModel; }) || MODELS[0];
   var providerLabel = { anthropic:'Anthropic', openai:'OpenAI', google:'Google', 'openai-compatible':'OpenAI-compatible' };
@@ -3761,6 +3861,28 @@ function renderSettings() {
           + '</div>';
       })()
 
+    + (function() {
+        var cur = S.cfg.persona || 'tutor';
+        var order = ['tutor', 'socratic', 'concise', 'rigorous', 'encouraging'];
+        return '<div class="card" style="margin-bottom:16px"><p class="sh">Study style</p>'
+          + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:12px">How the tutor generates questions, grades, and explains. Applies across every session.</p>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">'
+          + order.map(function(id) {
+              var p = PERSONAS[id]; var active = cur === id;
+              return '<button class="btn btn-sm" onclick="S.cfg.persona=\'' + id + '\';saveCfg();render()" style="padding:6px 12px;background:' + (active ? 'var(--acc)' : 'var(--card)') + ';color:' + (active ? '#fff' : 'var(--tx)') + ';border:1.5px solid ' + (active ? 'var(--acc)' : 'var(--brd)') + '">' + esc(p.name) + '</button>';
+            }).join('')
+          + '</div>'
+          + '<p style="font-family:var(--sans);font-size:11.5px;color:var(--dim);margin-bottom:16px">' + esc((PERSONAS[cur] || PERSONAS.tutor).sys) + '</p>'
+          + '<div class="row" style="gap:10px;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:160px"><p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:5px">Your level (optional)</p>'
+          + '<input class="inp" placeholder="e.g. first-year undergrad" value="' + esc(S.profile.level || '') + '" onchange="S.profile.level=this.value.trim();saveProfile()"></div>'
+          + '<div style="flex:1;min-width:160px"><p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:5px">Your goal (optional)</p>'
+          + '<input class="inp" placeholder="e.g. ace the final" value="' + esc(S.profile.goal || '') + '" onchange="S.profile.goal=this.value.trim();saveProfile()"></div>'
+          + '</div>'
+          + '<p style="font-family:var(--sans);font-size:11.5px;color:var(--dim);margin-top:10px">Level and goal are woven into prompts so questions and feedback fit you.</p>'
+          + '</div>';
+      })()
+
     + '<div class="card" style="margin-bottom:16px">'
     + '<p class="sh">API keys</p>'
     + keyRow('Anthropic', 'anthropicKey', 'sk-ant-api03-\u2026')
@@ -3827,6 +3949,7 @@ function renderStudy() {
   if (S.studyIntent === 'exam') return renderExamConfig();
   if (S.studyIntent === 'learn') return renderLearnNew();
   if (S.studyIntent === 'explain') return renderExplainBack();
+  if (S.studyIntent === 'solve') return renderSolve();
   if (S.studyIntent === 'drill') return renderDrill();
   return renderStudyHome();
 }
@@ -3930,6 +4053,8 @@ function renderStudyHome() {
     learn:   iconBox('#4c79f2',    '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'),
     // MessageSquare — explaining in your own words
     explain: iconBox('#7c5cbf',    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+    // CheckSquare — a worked, self-checked solution
+    solve:   iconBox('#35b59b',    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'),
   };
   var DEF = [
     ['review', 'Review', total > 0 ? total + ' cards due · weak-topic recall · consolidation' : 'Catch up on cards + active recall on weak topics'],
@@ -3937,6 +4062,7 @@ function renderStudyHome() {
     ['exam', 'Mock Exam', 'Timed, scored test · feedback withheld until end · seeds review'],
     ['learn', 'Learn New', 'Grounded study guide for a section · on-demand explanations'],
     ['explain', 'Explain-back', 'You explain a topic · AI finds gaps against your notes → cards'],
+    ['solve', 'Solve', 'Work a hard problem step by step · self-checked solution'],
   ];
   var renderList = function(excludeId) {
     return DEF.filter(function(d) { return d[0] !== excludeId; })
@@ -4479,7 +4605,7 @@ async function analyzeExplanation() {
   render();
   try {
     var raw = await callAI(
-      'The student is explaining a topic from their notes. Your job: compare their explanation against the source notes and give structured feedback.\nFormat your response as:\nSTRENGTHS: what they got right (1-3 bullets)\nGAPS: concepts from the notes they missed or got wrong (1-5 bullets, be specific)\nMISCONCEPTIONS: if any errors, name and correct them\nSUGGESTION: one sentence on what to review next\nBe concise, factual, grounded in the source notes. Do not invent content not in the notes.',
+      _personaSys() + 'The student is explaining a topic from their notes. Your job: compare their explanation against the source notes and give structured feedback.\nFormat your response as:\nSTRENGTHS: what they got right (1-3 bullets)\nGAPS: concepts from the notes they missed or got wrong (1-5 bullets, be specific)\nMISCONCEPTIONS: if any errors, name and correct them\nSUGGESTION: one sentence on what to review next\nBe concise, factual, grounded in the source notes. Do not invent content not in the notes.',
       'Topic: ' + topic + '\n\nSource notes:\n' + sourceText + '\n\nStudent\'s explanation:\n' + userText,
       800, 0.3
     );
@@ -4964,7 +5090,7 @@ async function genQuiz() {
   var qMax = Math.min(8000, Math.max(2400, count * 520));
   // G2: Bloom-tiered question mix: ~50% recall, ~30% apply, ~20% analyze
   var bloomInstr = '\n\nTag each question with a "level" field: "recall" for definitions/facts, "apply" for using concepts in a new context or calculation, "analyze" for multi-step reasoning or comparing ideas. Aim for a mix: at least 1-2 "apply" or "analyze" questions per set. Multi-step problems should include intermediate steps in the answer.';
-  var quizSys = 'You are a rigorous academic tutor. Generate exactly ' + count + ' questions that test deep understanding. If a selected section is provided, focus questions on that primary section. Use dependency context only when a question needs earlier definitions, prerequisites, notation, or assumptions; do not ignore dependencies that are required to answer correctly. Use LaTeX delimiters for math when helpful, such as \\(...\\) for inline math and $$...$$ for display math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"question":"...","hint":"short nudge","answer":"model answer","topic":"subject area","sourceSection":"exact section heading","level":"recall|apply|analyze"}]' + weakHint + coverageHint + topicConstraint + bloomInstr;
+  var quizSys = _personaSys() + 'You are a rigorous academic tutor. Generate exactly ' + count + ' questions that test deep understanding. If a selected section is provided, focus questions on that primary section. Use dependency context only when a question needs earlier definitions, prerequisites, notation, or assumptions; do not ignore dependencies that are required to answer correctly. Use LaTeX delimiters for math when helpful, such as \\(...\\) for inline math and $$...$$ for display math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"question":"...","hint":"short nudge","answer":"model answer","topic":"subject area","sourceSection":"exact section heading","level":"recall|apply|analyze"}]' + weakHint + coverageHint + topicConstraint + bloomInstr;
   var quizUser = 'Study scope: ' + ctx.label + '\n\nStudy material:\n' + contextText(ctx.text);
   showSpin('Generating ' + count + ' questions\u2026');
   var _qTokens = 0;
@@ -5166,7 +5292,7 @@ async function genCards() {
     ? '\n\nPrioritize cards on these weak topics: ' + insights.weakTopics.slice(0, 3).map(function(w) { return w.topic + ' (' + w.accuracy + '% accuracy)'; }).join(', ') + '.'
     : '';
   var genTarget = Math.max(5, Math.min(12, plan.cap + 2));
-  var cardSys = 'Create ' + genTarget + ' study flashcards. If a selected section is provided, focus on that section. Include a "typed" field set to true for cards whose answer is a single short term or number (4 words or fewer). Use LaTeX delimiters for math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"front":"term or question","back":"concise answer","note":"1-2 sentence deeper insight, worked example, or mnemonic (use LaTeX for math)","topic":"subject area","sourceSection":"exact section heading the card came from","typed":false}]' + weakHint + topicConstraint;
+  var cardSys = _personaSys() + 'Create ' + genTarget + ' study flashcards. If a selected section is provided, focus on that section. Include a "typed" field set to true for cards whose answer is a single short term or number (4 words or fewer). Use LaTeX delimiters for math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"front":"term or question","back":"concise answer","note":"1-2 sentence deeper insight, worked example, or mnemonic (use LaTeX for math)","topic":"subject area","sourceSection":"exact section heading the card came from","typed":false}]' + weakHint + topicConstraint;
   var cardUser = 'Study scope: ' + ctx.label + '\n\nStudy material:\n' + contextText(ctx.text);
   var _cTokens = 0;
   try {
