@@ -320,6 +320,7 @@ const S = {
   explainBack: null,       // {topic, sourceText, userText, result, loading}
   studyPlan: null,         // {subject, days, plan, loading}
   confidence: null,        // per-question confidence: 'sure'|'unsure'|'guess'
+  examExpandedIdx: null,   // index of expanded question row in exam report
 };
 
 function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
@@ -4281,7 +4282,8 @@ async function startMockExam() {
     S.mockExam = {
       active: true, finished: false,
       questions: _validateAndFixSections(items).map(function(q, i) { return Object.assign({ id: Date.now() + i }, q); }),
-      answers: [],
+      answers: [],   // sparse array indexed by question position
+      viewIdx: 0,    // which question is currently on screen
       startTime: Date.now(),
       size: size,
       topic: scopeLabel,
@@ -4303,58 +4305,122 @@ function retakeExam() {
 function renderMockExam() {
   if (!S.mockExam) return '';
   var me = S.mockExam;
-  var idx = me.answers.length;
-  var q = me.questions[idx];
+  var qi = me.viewIdx || 0;
+  var q = me.questions[qi];
+  var n = me.questions.length;
   var elapsed = Math.round((Date.now() - me.startTime) / 1000);
   var mm = String(Math.floor(elapsed / 60)).padStart(2,'0');
   var ss = String(elapsed % 60).padStart(2,'0');
 
-  var header = '<div class="rowsb" style="margin-bottom:18px">'
-    + '<div><p class="ph" style="margin:0">Mock Exam</p>'
-    + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-top:4px">' + esc(me.topic) + '</p></div>'
+  var answeredCount = me.questions.filter(function(_, i) { return !!me.answers[i] && !me.answers[i].skipped; }).length;
+  var skippedCount  = me.questions.filter(function(_, i) { return !!me.answers[i] &&  me.answers[i].skipped; }).length;
+  var touchedCount  = answeredCount + skippedCount;
+
+  var existingAns = me.answers[qi];
+  var isLocked     = !!(existingAns && !existingAns.skipped); // answered — cannot change
+  var wasSkipped   = !!(existingAns &&  existingAns.skipped); // skipped — can retry
+
+  // Status chips under timer
+  var chips = '';
+  if (answeredCount) chips += '<span style="font-family:var(--sans);font-size:11px;color:#49c47e">' + answeredCount + ' answered</span>';
+  if (skippedCount)  chips += (chips ? ' · ' : '') + '<span style="font-family:var(--sans);font-size:11px;color:var(--warn)">' + skippedCount + ' skipped</span>';
+
+  var header = '<div class="rowsb" style="margin-bottom:14px">'
+    + '<div>'
+    + '<p class="ph" style="margin:0">Mock Exam</p>'
+    + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-top:4px">' + esc(me.topic) + '</p>'
+    + '</div>'
     + '<div style="text-align:right">'
     + '<p style="font-family:var(--sans);font-size:18px;font-weight:700;color:var(--tx);font-variant-numeric:tabular-nums">' + mm + ':' + ss + '</p>'
-    + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut)">' + (idx + 1) + ' / ' + me.questions.length + '</p>'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut)">' + (qi + 1) + ' / ' + n + '</p>'
+    + (chips ? '<p style="margin-top:2px">' + chips + '</p>' : '')
     + '</div></div>'
-    + '<div class="prog" style="margin-bottom:20px"><div class="pf" style="width:' + Math.round(idx / me.questions.length * 100) + '%;background:var(--gold)"></div></div>';
+    + '<div class="prog" style="margin-bottom:20px"><div class="pf" style="width:' + Math.round(touchedCount / n * 100) + '%;background:var(--gold)"></div></div>';
 
-  var bloom = q && q.level ? '<span class="bdg bdg-neutral" style="margin-bottom:12px;display:inline-block">' + esc(q.level) + '</span><br>' : '';
+  var bloom = q.level ? '<span class="bdg bdg-neutral" style="margin-bottom:12px;display:inline-block">' + esc(q.level) + '</span><br>' : '';
+  var skippedBadge = wasSkipped ? '<span class="bdg" style="background:var(--warn-t,#fff3cd);color:var(--warn);margin-bottom:10px;display:inline-block">Previously skipped</span><br>' : '';
 
   var qCard = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold)">'
-    + bloom
+    + bloom + skippedBadge
     + (q.topic ? badge(q.topic, '#6b8ef5') + ' ' : '')
     + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;margin-top:10px;color:var(--tx)">' + esc(q.question) + '</p>'
     + '</div>';
 
-  var ansCard = '<div class="card">'
-    + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:8px;font-weight:700">YOUR ANSWER — no feedback until end</p>'
-    + '<textarea class="inp" id="exam-ans" placeholder="Write your answer here…" style="height:120px;margin-bottom:12px"></textarea>'
-    + '<div class="row" style="gap:8px">'
-    + '<button class="btn bp" onclick="submitMockAnswer()">Next &rarr;</button>'
-    + '<button class="btn bg btn-sm" style="color:var(--warn)" onclick="submitMockAnswer(true)">Skip</button>'
-    + '<button class="btn bg btn-sm" style="margin-left:auto;color:var(--mut)" onclick="if(confirm(\'Abandon this exam?\')){S.mockExam=null;goStudyIntent(null)}">Abandon</button>'
-    + '</div></div>';
+  var ansCard;
+  if (isLocked) {
+    // Already answered — show read-only view, allow navigating away
+    ansCard = '<div class="card">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Your answer · locked</p>'
+      + '<div style="padding:12px 16px;background:var(--bg);border-radius:7px;border:1px solid var(--brd);margin-bottom:14px">'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + esc(existingAns.answer || '—') + '</p>'
+      + '</div>'
+      + '<div class="row" style="gap:8px">'
+      + (qi > 0 ? '<button class="btn bg btn-sm" onclick="navMockExam(' + (qi - 1) + ')">&#x2190; Back</button>' : '')
+      + '<button class="btn bp" onclick="navMockExam(' + Math.min(qi + 1, n - 1) + ')">Next &rarr;</button>'
+      + '<button class="btn bg btn-sm" style="margin-left:auto;color:var(--mut)" onclick="if(confirm(\'Abandon this exam?\')){S.mockExam=null;goStudyIntent(null)}">Abandon</button>'
+      + '</div></div>';
+  } else {
+    // Unanswered or skipped — show input
+    var allTouched = touchedCount === n;
+    ansCard = '<div class="card">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:8px;font-weight:700">YOUR ANSWER — no feedback until end</p>'
+      + '<textarea class="inp" id="exam-ans" placeholder="Write your answer here…" style="height:120px;margin-bottom:12px"></textarea>'
+      + '<div class="row" style="gap:8px;flex-wrap:wrap">'
+      + (qi > 0 ? '<button class="btn bg btn-sm" onclick="navMockExam(' + (qi - 1) + ')">&#x2190; Back</button>' : '')
+      + '<button class="btn bp" onclick="submitMockAnswer()">Submit &rarr;</button>'
+      + '<button class="btn bg btn-sm" style="color:var(--warn)" onclick="submitMockAnswer(true)">' + (wasSkipped ? 'Keep skip' : 'Skip') + '</button>'
+      + (allTouched ? '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="finishMockExam()">Finish exam</button>' : '')
+      + '<button class="btn bg btn-sm" style="margin-left:auto;color:var(--mut)" onclick="if(confirm(\'Abandon this exam?\')){S.mockExam=null;goStudyIntent(null)}">Abandon</button>'
+      + '</div></div>';
+  }
 
   return header + qCard + ansCard;
+}
+
+function navMockExam(qi) {
+  var me = S.mockExam;
+  if (!me) return;
+  me.viewIdx = Math.max(0, Math.min(qi, me.questions.length - 1));
+  render();
 }
 
 function submitMockAnswer(skip) {
   var me = S.mockExam;
   if (!me || !me.active) return;
+  var qi = me.viewIdx || 0;
   var ta = document.getElementById('exam-ans');
   var ans = skip ? '' : (ta ? ta.value.trim() : '');
-  var q = me.questions[me.answers.length];
-  me.answers.push({ q: q, answer: ans, skipped: !!skip });
-  if (me.answers.length >= me.questions.length) {
-    me.active = false;
-    me.finished = true;
-    me.endTime = Date.now();
-    _scoreExam(me).catch(function(e) {
-      me.report = { items: [], byTopic: {}, score: 0, max: me.questions.length * 3, loading: false };
-      toast('Grading failed: ' + (e.message || 'unknown error'));
-      render();
-    });
+  if (!skip && !ans) { toast('Write an answer, or tap Skip.'); return; }
+  me.answers[qi] = { q: me.questions[qi], answer: ans, skipped: !!skip };
+
+  // Advance to the next unanswered question (forward first, then wrap)
+  var n = me.questions.length;
+  var next = -1;
+  for (var d = 1; d <= n; d++) {
+    var i = (qi + d) % n;
+    if (!me.answers[i]) { next = i; break; }
   }
+
+  if (next === -1) {
+    // All questions touched — finish
+    finishMockExam();
+  } else {
+    me.viewIdx = next;
+    render();
+  }
+}
+
+function finishMockExam() {
+  var me = S.mockExam;
+  if (!me) return;
+  me.active = false;
+  me.finished = true;
+  me.endTime = Date.now();
+  _scoreExam(me).catch(function(e) {
+    me.report = { items: [], byTopic: {}, score: 0, max: me.questions.length * 3, loading: false };
+    toast('Grading failed: ' + (e.message || 'unknown error'));
+    render();
+  });
   render();
 }
 
@@ -4364,7 +4430,7 @@ async function _scoreExam(me) {
   me.report = { items: [], byTopic: {}, score: 0, total: 0, loading: true };
   render();
 
-  var gradingItems = me.answers.filter(function(a) { return !a.skipped && a.answer; });
+  var gradingItems = me.answers.filter(function(a) { return a && !a.skipped && a.answer; });
   var results = await Promise.all(gradingItems.map(async function(a) {
     try {
       var r = _tryNumericGrade(a.q, a.answer);
@@ -4390,7 +4456,7 @@ async function _scoreExam(me) {
     _recordQuizAttempt(r.q, r.answer, r.result);
     if ((r.result.score || 0) === 0) _autoAddMissedCard(r.q, r.result);
   });
-  me.answers.filter(function(a) { return a.skipped || !a.answer; }).forEach(function(a) {
+  me.answers.filter(function(a) { return a && (a.skipped || !a.answer); }).forEach(function(a) {
     var t = a.q.topic || 'General';
     if (!byTopic[t]) byTopic[t] = { ok: 0, n: 0 };
     byTopic[t].n++;
@@ -4432,17 +4498,89 @@ function renderExamReport() {
       }).join('')
     + '</div>';
 
-  var itemList = rpt.items.length ? '<div class="card"><p class="sh">Question review</p>'
-    + rpt.items.slice(0, 10).map(function(item) {
-        var sc = item.result.score || 0;
-        var c = scoreColor(sc);
-        return '<div style="padding:12px 0;border-bottom:1px solid var(--brd)">'
-          + '<div class="rowsb" style="margin-bottom:6px">'
-          + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--mut);flex:1;margin-right:12px">' + esc(item.q.question) + '</p>'
-          + badge(sc + '/3', c) + '</div>'
-          + (sc < 3 ? '<p class="math-rich" style="font-family:var(--sans);font-size:12px;color:var(--tx);margin-top:4px">' + esc(item.result.feedback || '') + '</p>' : '')
+  // Build ordered list covering all questions (graded + skipped/empty)
+  var gradedMap = {};
+  rpt.items.forEach(function(item) { gradedMap[item.q.id] = item; });
+  var allItems = me.questions.map(function(q, qi) {
+    if (gradedMap[q.id]) return gradedMap[q.id];
+    var ans = me.answers[qi] || {};
+    return { q: q, answer: ans.answer || '', skipped: true, result: null };
+  });
+
+  var itemList = allItems.length ? '<div class="card"><p class="sh">Question review</p>'
+    + allItems.map(function(item, i) {
+        var expanded = S.examExpandedIdx === i;
+        var sc = item.result ? (item.result.score || 0) : null;
+        var isSkipped = item.skipped && !item.result;
+        var col = isSkipped ? 'var(--mut)' : scoreColor(sc);
+        var badgeLabel = isSkipped ? 'skipped' : sc + '/3';
+        var chevron = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--mut)">'
+          + (expanded ? '<polyline points="18 15 12 9 6 15"/>' : '<polyline points="6 9 12 15 18 9"/>') + '</svg>';
+
+        var row = '<div style="padding:12px 0;border-bottom:1px solid var(--brd)">'
+          + '<div class="rowsb" style="cursor:pointer;gap:10px" onclick="toggleExamItem(' + i + ')">'
+          + '<div style="display:flex;gap:8px;flex:1;overflow:hidden;align-items:' + (expanded ? 'flex-start' : 'center') + '">'
+          + '<div style="width:3px;flex-shrink:0;align-self:stretch;border-radius:2px;background:' + col + ';margin-top:1px"></div>'
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);flex:1;margin:0;overflow:hidden;text-overflow:ellipsis;' + (expanded ? '' : 'white-space:nowrap') + '">' + esc(item.q.question) + '</p>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' + badge(badgeLabel, col) + chevron + '</div>'
           + '</div>';
-      }).join('') + '</div>' : '';
+
+        if (expanded) {
+          row += '<div style="margin-top:12px;padding-left:11px">';
+
+          // Score row + feedback
+          if (item.result) {
+            var sc2 = item.result.score || 0, c2 = scoreColor(sc2);
+            var pips = [1,2,3].map(function(p) {
+              return '<div style="width:22px;height:4px;border-radius:2px;background:' + (p <= sc2 ? c2 : 'var(--brd)') + '"></div>';
+            }).join('');
+            var scoreLabel = sc2 >= 3 ? 'Correct' : sc2 === 2 ? 'Mostly correct' : sc2 === 1 ? 'Partial' : 'Incorrect';
+            row += '<div class="row" style="margin-bottom:10px;gap:6px">' + pips
+              + '<span style="font-family:var(--sans);font-size:11px;color:' + c2 + ';font-weight:600;text-transform:uppercase;letter-spacing:.06em">' + scoreLabel + '</span></div>';
+            if (item.result.feedback) {
+              row += '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.65;margin-bottom:10px">' + esc(item.result.feedback) + '</p>';
+            }
+          } else {
+            row += '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:10px">Skipped — no answer recorded</p>';
+          }
+
+          // Your answer
+          if (item.answer) {
+            row += '<div style="padding:10px 14px;background:var(--card);border-radius:6px;border:1px solid var(--brd);margin-bottom:8px">'
+              + '<p style="font-family:var(--sans);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Your answer</p>'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + esc(item.answer) + '</p>'
+              + '</div>';
+          }
+
+          // Model answer (result.modelAnswer takes priority, falls back to q.answer)
+          var modelAns = (item.result && item.result.modelAnswer) || item.q.answer || '';
+          if (modelAns) {
+            row += '<div style="padding:10px 14px;background:var(--card2);border-radius:6px;border:1px solid var(--brd);margin-bottom:8px">'
+              + '<p style="font-family:var(--sans);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Model answer</p>'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + esc(modelAns) + '</p>'
+              + '</div>';
+          }
+
+          // Library source excerpt (collapsible)
+          var srcText = _sourceTextForQuestion(item.q);
+          if (srcText) {
+            var excerpt = srcText.slice(0, 600) + (srcText.length > 600 ? '…' : '');
+            row += '<details style="margin-top:4px">'
+              + '<summary style="font-family:var(--sans);font-size:11px;color:var(--acc);cursor:pointer;letter-spacing:.03em">Library source'
+              + (item.q.sourceSection ? ' · ' + esc(item.q.sourceSection) : '') + '</summary>'
+              + '<div style="margin-top:8px;padding:10px 14px;background:var(--bg);border-radius:6px;border:1px solid var(--brd)">'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:12px;color:var(--mut);line-height:1.7;white-space:pre-wrap">' + esc(excerpt) + '</p>'
+              + (item.q.sourceSection ? '<div style="margin-top:8px">' + _srcCiteLink(item.q.sourceSection) + '</div>' : '')
+              + '</div></details>';
+          }
+
+          row += '</div>';
+        }
+
+        return row + '</div>';
+      }).join('')
+    + '</div>' : '';
 
   var actions = '<div class="row" style="margin-top:20px;gap:10px;flex-wrap:wrap">'
     + '<button class="btn bp" onclick="S.mockExam=null;goStudyIntent(null)">Done</button>'
@@ -4451,6 +4589,11 @@ function renderExamReport() {
     + '</div>';
 
   return header + scoreSummary + topicBreakdown + itemList + actions;
+}
+
+function toggleExamItem(idx) {
+  S.examExpandedIdx = S.examExpandedIdx === idx ? null : idx;
+  render();
 }
 
 // ════════════════════════════════════════════
@@ -4803,6 +4946,7 @@ function goStudyIntent(intent) {
     S.queue = []; S.qi = 0; S.result = null; S.ans = '';
     S.missedQOffer = null; S.confidence = null; _hintShown = false;
     S.examConfig = null;
+    S.examExpandedIdx = null;
   }
   var c = document.getElementById('content');
   if (c) c.scrollTop = 0;
@@ -4830,8 +4974,33 @@ function setSectionScope(id) {
 // ACTIONS — LIBRARY
 // ════════════════════════════════════════════
 function removeDoc(name) {
+  // Identify cards linked to this document before removing it from S.docs
+  var secTitlesForDoc = {};
+  studySections().filter(function(s) { return s.doc === name; }).forEach(function(s) { secTitlesForDoc[s.title] = true; });
+  var linkedCards = S.cards.filter(function(c) {
+    return c.sourceDoc === name || (!c.sourceDoc && c.sourceSection && secTitlesForDoc[c.sourceSection]);
+  });
+
   setDocs(S.docs.filter(function(d) { return d.name !== name; }));
-  saveDocs(); render();
+  saveDocs();
+
+  if (linkedCards.length > 0) {
+    var n = linkedCards.length;
+    var msg = n + ' flashcard' + (n > 1 ? 's' : '') + ' sourced from "' + name + '" found.\n\nRemove them too? (Recommended — they won\'t be regenerated from this material)';
+    if (confirm(msg)) {
+      var removeIds = {};
+      linkedCards.forEach(function(c) { removeIds[c.id] = true; });
+      S.cards = S.cards.filter(function(c) { return !removeIds[c.id]; });
+      saveCards();
+      Object.keys(secTitlesForDoc).forEach(function(t) { delete S.coverage[t]; });
+      _saveCoverage();
+      toast('Removed "' + name + '" and ' + n + ' card' + (n > 1 ? 's' : '') + '.');
+    } else {
+      toast('Document removed. ' + n + ' card' + (n > 1 ? 's' : '') + ' kept.');
+    }
+  }
+
+  render();
 }
 
 function addPaste() {
@@ -5313,10 +5482,14 @@ async function genCards() {
     var existing = S.cards;
     var frontMap = {};
     existing.forEach(function(c) { frontMap[_normalizeFront(c.front)] = true; });
+    // Build a section→doc lookup so each new card gets a sourceDoc stamp
+    var secDocMap = {};
+    studySections().forEach(function(s) { if (!secDocMap[s.title]) secDocMap[s.title] = s.doc; });
     var newCards = rawCards.filter(function(c) { return !frontMap[_normalizeFront(c.front)]; })
       .map(function(c, i) {
         var typed = c.typed === true || String(c.back || '').trim().split(/\s+/).length <= 4;
-        return Object.assign({ id: Date.now()+i, mastered:false, typed: typed, fsrs: lib ? lib.createEmptyCard() : null }, c);
+        var sourceDoc = secDocMap[c.sourceSection] || null;
+        return Object.assign({ id: Date.now()+i, mastered:false, typed: typed, fsrs: lib ? lib.createEmptyCard() : null, sourceDoc: sourceDoc }, c);
       });
     S.cards = existing.concat(newCards);
     newCards.forEach(function(c) { if (c.sourceSection) _bumpCoverage(c.sourceSection, 'carded'); });
