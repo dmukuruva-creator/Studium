@@ -137,6 +137,10 @@ input.inp{height:42px}
 /* Pip animation */
 @keyframes pipIn{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1);transform-origin:left}}
 .pip-fill{animation:pipIn .35s ease both}
+/* Respect reduced-motion preference (WCAG 2.3.3): neutralise animations/transitions */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
 /* Today tab */
 .today-stat{background:var(--card);border:1px solid var(--brd);border-radius:var(--radius-lg);padding:18px 14px;text-align:center;box-shadow:var(--shadow-sm)}
 .today-sv{font-size:32px;font-weight:700;line-height:1;letter-spacing:-.02em}
@@ -170,7 +174,7 @@ input.inp{height:42px}
   </div>
 </div>
 
-<div id="spinner" style="display:none">
+<div id="spinner" style="display:none" role="status" aria-live="polite">
   <div class="spin-box">
     <div class="spin"></div>
     <p id="spin-msg" style="font-family:var(--sans);font-size:14px;color:var(--mut);animation:pulse 1.8s ease infinite">Loading…</p>
@@ -2630,7 +2634,7 @@ function renderQuiz() {
       + '<div style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 1s ease-in-out infinite;flex-shrink:0"></div>'
       + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em">Grading</span>'
       + '</div>'
-      + '<p id="grade-stream" class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;color:var(--tx);min-height:52px">'
+      + '<p id="grade-stream" class="math-rich" aria-live="polite" aria-atomic="true" style="font-family:var(--serif);font-size:15px;line-height:1.7;color:var(--tx);min-height:52px">'
       + esc(previewText || '•••')
       + '</p>'
       + '</div>';
@@ -3417,7 +3421,7 @@ function renderToday() {
         + '<div style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 1s ease-in-out infinite;flex-shrink:0"></div>'
         + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em">Grading</span>'
         + '</div>'
-        + '<p id="today-grade-stream" class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + esc(prevText || '•••') + '</p>'
+        + '<p id="today-grade-stream" class="math-rich" aria-live="polite" aria-atomic="true" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + esc(prevText || '•••') + '</p>'
         + '</div>';
     } else if (S.todayResult) {
       var tsc = S.todayResult.score;
