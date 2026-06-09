@@ -164,13 +164,13 @@ input.inp{height:42px}
 </head>
 <body>
 <div id="app">
-  <div id="sidebar"></div>
+  <nav id="sidebar" aria-label="Primary"></nav>
   <div id="main">
     <div id="topbar">
       <div id="topbar-title"></div>
       <div id="topbar-model"></div>
     </div>
-    <div id="content"><div id="view"></div></div>
+    <div id="content"><main id="view" tabindex="-1"></main></div>
   </div>
 </div>
 
@@ -325,10 +325,25 @@ const S = {
   studyPlan: null,         // {subject, days, plan, loading}
   confidence: null,        // per-question confidence: 'sure'|'unsure'|'guess'
   examExpandedIdx: null,   // index of expanded question row in exam report
+  quant: null,             // active quant-drill session
+  quantBanks: [],          // [{id,name,items:[{q,a}],createdAt}]
+  quantImport: '',         // in-progress paste in the bank importer
 };
 
 function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
-function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+var _lsWarned = 0;
+function lsSet(k, v) {
+  try { localStorage.setItem(k, JSON.stringify(v)); }
+  catch (e) {
+    // Surface storage-quota failures instead of silently losing data.
+    try { console.warn('[studium] localStorage write failed for "' + k + '":', e && e.message); } catch (e3) {}
+    var now = Date.now();
+    if (now - _lsWarned > 60000) {
+      _lsWarned = now;
+      try { if (typeof toast === 'function') toast('Storage full — some data may not have saved. Export a backup (Settings) and clear old documents.'); } catch (e2) {}
+    }
+  }
+}
 
 // ── IndexedDB (docs, cards, cmap) ─────────────────────────────────────────
 var _db = null;
@@ -549,6 +564,7 @@ async function loadState() {
   S.subjectDocKey   = lsGet('sd_subjectDocKey')   || '';
   S.extractWarnings = lsGet('sd_extractWarnings') || [];
   S.coverage        = lsGet('sd_coverage')        || {};
+  S.quantBanks      = lsGet('sd_quantbanks')      || [];
   var savedMeta = lsGet('sd_meta');
   if (savedMeta && typeof savedMeta === 'object') Object.assign(S.meta, savedMeta);
   S.analytics = normalizeAnalytics(lsGet('sd_analytics'));
@@ -1867,10 +1883,32 @@ function fsrsNextDueLabel(fsrsCard) {
   return Math.round(diffMs / 86400000) + 'd';
 }
 
+// Interleaved practice (Rohrer/Kornell): spread topics so consecutive items
+// rarely share a topic. Stable round-robin across topic buckets — preserves the
+// original (due-date) order within each topic. Pure function.
+function _interleaveByTopic(list, keyFn) {
+  var buckets = [], index = {};
+  list.forEach(function(item) {
+    var k = keyFn(item) || '';
+    if (index[k] == null) { index[k] = buckets.length; buckets.push([]); }
+    buckets[index[k]].push(item);
+  });
+  if (buckets.length <= 1) return list.slice();
+  var out = [], remaining = list.length;
+  while (remaining > 0) {
+    for (var b = 0; b < buckets.length; b++) {
+      if (buckets[b].length) { out.push(buckets[b].shift()); remaining--; }
+    }
+  }
+  return out;
+}
+
 function fsrsComputeTodayQueue() {
   var plan = examSchedulePlan();
   var due = S.cards.filter(function(c) { return !isCardSuspended(c) && c.fsrs && fsrsIsDue(c.fsrs); });
   due.sort(function(a, b) { return new Date(a.fsrs.due) - new Date(b.fsrs.due); });
+  // Interleave the due set by topic (research-backed); new/leech tail stays appended.
+  due = _interleaveByTopic(due, function(c) { return (c.topic || '').toLowerCase(); });
   var neverReviewed = S.cards.filter(function(c) { return !isCardSuspended(c) && (!c.fsrs || !c.fsrs.reps); });
   // Deprioritize new cards that are flagged as leeches (they should be handled explicitly)
   var normalNew = neverReviewed.filter(function(c) { return !c.leech; });
@@ -2663,7 +2701,7 @@ function renderQuiz() {
         + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;color:var(--tx);line-height:1.7">' + esc(S.result.keyIdea) + '</p>'
         + '</div>' : '')
       + '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">'
-      + '<button class="btn bp" onclick="nextQ()" title="Press Enter">Continue &rarr;</button>'
+      + '<button class="btn bp" id="q-continue" onclick="nextQ()" title="Press Enter">Continue &rarr;</button>'
       + (S.result.score < 2 ? '<button class="btn bg btn-sm" style="color:var(--gold);border-color:var(--gold)" onclick="focusFollowUp()" title="Practice this same concept from a different angle, right now">Focused follow-up</button>' : '')
       + (S.missedQOffer ? '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="addMissedToReview()" title="Add this question as a flashcard to review tomorrow">+ Add to review deck</button>' : '')
       + '<div style="flex:1"></div>'
@@ -3965,6 +4003,7 @@ function renderStudy() {
   if (S.studyIntent === 'explain') return renderExplainBack();
   if (S.studyIntent === 'solve') return renderSolve();
   if (S.studyIntent === 'drill') return renderDrill();
+  if (S.studyIntent === 'quant') return renderQuant();
   return renderStudyHome();
 }
 
@@ -4069,6 +4108,8 @@ function renderStudyHome() {
     explain: iconBox('#7c5cbf',    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
     // CheckSquare — a worked, self-checked solution
     solve:   iconBox('#35b59b',    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'),
+    // Divide — quant rapid-fire over your own bank
+    quant:   iconBox('#d4a23a',    '<circle cx="12" cy="6" r="1"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="12" cy="18" r="1"/>'),
   };
   var DEF = [
     ['review', 'Review', total > 0 ? total + ' cards due · weak-topic recall · consolidation' : 'Catch up on cards + active recall on weak topics'],
@@ -4077,10 +4118,12 @@ function renderStudyHome() {
     ['learn', 'Learn New', 'Grounded study guide for a section · on-demand explanations'],
     ['explain', 'Explain-back', 'You explain a topic · AI finds gaps against your notes → cards'],
     ['solve', 'Solve', 'Work a hard problem step by step · self-checked solution'],
+    ['quant', 'Quant Drill', 'Your own question bank · rapid-fire · timed · instant scoring'],
   ];
   var renderList = function(excludeId) {
     return DEF.filter(function(d) { return d[0] !== excludeId; })
-      .map(function(d) { return intent(d[0], SVG[d[0]], d[1], d[2], false, !hasDocs); }).join('');
+      // Quant Drill runs on its own pasted bank — usable even before any docs are uploaded.
+      .map(function(d) { return intent(d[0], SVG[d[0]], d[1], d[2], false, d[0] !== 'quant' && !hasDocs); }).join('');
   };
 
   // No recommendation (e.g., no documents yet) → show the full menu as before.
@@ -4127,6 +4170,389 @@ function renderDrill() {
     + '<p class="ph" style="margin:0">Drill</p></div>'
     + '</div>';
   return back + renderQuiz();
+}
+
+// ════════════════════════════════════════════
+// QUANT DRILL — rapid-fire practice over your own question banks
+// True to Studium: grounded in YOUR bank, instant deterministic grading
+// (no LLM, so it feels instant), bounded sessions, and weak items resurface
+// in the FSRS review deck — the spaced-repetition edge over tradermath et al.
+// ════════════════════════════════════════════
+var _quantTimer = null;
+
+function saveQuantBanks() { lsSet('sd_quantbanks', S.quantBanks); }
+
+// Parse "answer-like" text to a number: integers, decimals, fractions (a/b),
+// and percents (50% -> 0.5). Returns null for non-numeric input.
+function _quantToNumber(s) {
+  s = String(s == null ? '' : s).trim().replace(/,/g, '').replace(/\s+/g, '');
+  if (!s) return null;
+  var pct = false;
+  if (s.charAt(s.length - 1) === '%') { pct = true; s = s.slice(0, -1); }
+  var frac = s.match(/^([-+]?\d*\.?\d+)\/([-+]?\d*\.?\d+)$/);
+  var n;
+  if (frac) { var d = parseFloat(frac[2]); if (!d) return null; n = parseFloat(frac[1]) / d; }
+  else if (/^[-+]?\d*\.?\d+$/.test(s)) { n = parseFloat(s); }
+  else return null;
+  if (isNaN(n)) return null;
+  return pct ? n / 100 : n;
+}
+
+// Grade a quant answer. Integers require an exact match (arithmetic); answers
+// written with a decimal, fraction, or percent allow a small relative tolerance
+// (rounding). Falls back to normalized string match for word answers.
+function gradeQuantAnswer(item, answer) {
+  var expected = item && item.a != null ? String(item.a) : '';
+  var sn = _quantToNumber(answer), en = _quantToNumber(expected);
+  if (sn != null && en != null) {
+    var tolerant = /[.\/%]/.test(expected) || /[.\/%]/.test(String(answer));
+    var ok = Math.abs(en) < 1e-9
+      ? Math.abs(sn) < 1e-6
+      : (tolerant ? Math.abs(sn - en) / Math.abs(en) < 0.005 : Math.abs(sn - en) < 1e-9);
+    return { correct: ok, expected: expected };
+  }
+  return { correct: _normalizeCloze(answer) === _normalizeCloze(expected), expected: expected };
+}
+
+// Parse a pasted bank into [{q,a}]. Accepts JSON, "Q:/A:" blocks, or lines
+// delimited by tab, |, ::, =>, or →. (Comma is intentionally NOT a delimiter —
+// questions often contain commas.)
+function parseQuantBank(text) {
+  text = String(text || '').trim();
+  if (!text) return [];
+  if (text[0] === '[' || text[0] === '{') {
+    try {
+      var arr = JSON.parse(text);
+      if (!Array.isArray(arr)) arr = [arr];
+      var out = arr.map(function(o) {
+        if (o == null || typeof o !== 'object') return null;
+        var q = o.q != null ? o.q : (o.question != null ? o.question : o.prompt);
+        var a = o.a != null ? o.a : (o.answer != null ? o.answer : o.solution);
+        if (q == null || a == null) return null;
+        return { q: String(q).trim(), a: String(a).trim() };
+      }).filter(function(x) { return x && x.q && x.a !== ''; });
+      if (out.length) return out;
+    } catch (e) { /* fall through */ }
+  }
+  if (/(^|\n)\s*Q[:.\)]/i.test(text) && /(^|\n)\s*A[:.\)]/i.test(text)) {
+    var pairs = [], curQ = null;
+    text.split(/\r?\n/).forEach(function(line) {
+      var mq = line.match(/^\s*Q[:.\)]\s*(.*)$/i);
+      var ma = line.match(/^\s*A[:.\)]\s*(.*)$/i);
+      if (mq) curQ = mq[1].trim();
+      else if (ma && curQ != null) { pairs.push({ q: curQ, a: ma[1].trim() }); curQ = null; }
+    });
+    pairs = pairs.filter(function(p) { return p.q && p.a !== ''; });
+    if (pairs.length) return pairs;
+  }
+  var DELIMS = ['\t', '|', '::', '=>', '→'];
+  var rows = [];
+  text.split(/\r?\n/).forEach(function(line) {
+    line = line.trim();
+    if (!line) return;
+    for (var i = 0; i < DELIMS.length; i++) {
+      var idx = line.indexOf(DELIMS[i]);
+      if (idx > 0) {
+        var q = line.slice(0, idx).trim().replace(/^["']|["']$/g, '');
+        var a = line.slice(idx + DELIMS[i].length).trim().replace(/^["']|["']$/g, '');
+        if (q && a) rows.push({ q: q, a: a });
+        return;
+      }
+    }
+  });
+  return rows;
+}
+
+// Weighted next-item pick: unseen first, missed resurface more, mastered (2+
+// correct in a row) fade out; never repeat the immediately-previous item.
+function _quantPickNext(sess) {
+  var items = sess.items, n = items.length;
+  if (n <= 1) return 0;
+  var weights = items.map(function(_, i) {
+    var st = sess.stats[i] || { seen: 0, wrong: 0, streak: 0 };
+    var w;
+    if (st.seen === 0) w = 2.0;
+    else if (st.streak >= 2) w = 0.25;
+    else w = 1 + st.wrong * 1.5;
+    if (i === sess.idx) w = 0;
+    return w;
+  });
+  var total = weights.reduce(function(a, b) { return a + b; }, 0);
+  if (total <= 0) { return (sess.idx + 1) % n; }
+  var r = Math.random() * total;
+  for (var i = 0; i < n; i++) { r -= weights[i]; if (r <= 0) return i; }
+  return n - 1;
+}
+
+function _fmtMMSS(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+}
+
+// ── Bank management ─────────────────────────────────────────────────────────
+function setQuantImport(v) { S.quantImport = v; }
+
+function importQuantBank() {
+  var nameEl = document.getElementById('quant-bank-name');
+  var name = (nameEl && nameEl.value.trim()) || 'Bank ' + (S.quantBanks.length + 1);
+  var items = parseQuantBank(S.quantImport);
+  if (!items.length) { toast('No question/answer pairs found. Use JSON, "Q:/A:", or "question | answer" per line.'); return; }
+  S.quantBanks.push({ id: Date.now(), name: name, items: items, createdAt: Date.now() });
+  S.quantImport = '';
+  saveQuantBanks();
+  toast('Added "' + name + '" — ' + items.length + ' question' + (items.length === 1 ? '' : 's') + '.');
+  render();
+}
+
+function deleteQuantBank(id) {
+  if (!confirm('Delete this bank?')) return;
+  S.quantBanks = S.quantBanks.filter(function(b) { return b.id !== id; });
+  saveQuantBanks();
+  render();
+}
+
+// ── Session ───────────────────────────────────────────────────────────────
+function startQuantDrill(bankId, mode, durationSec) {
+  var bank = S.quantBanks.find(function(b) { return b.id === bankId; });
+  if (!bank || !bank.items.length) { toast('That bank is empty.'); return; }
+  if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
+  S.quant = {
+    active: true, finished: false,
+    bankId: bankId, bankName: bank.name,
+    items: bank.items.slice(),
+    idx: 0, stats: {}, answered: 0, correct: 0, streakCur: 0, streakBest: 0,
+    missed: {}, showResult: false, lastResult: null, lastGiven: '',
+    mode: mode === 'timed' ? 'timed' : 'practice',
+    startTime: Date.now(),
+    endTime: mode === 'timed' ? Date.now() + (durationSec || 120) * 1000 : null,
+  };
+  if (S.quant.mode === 'timed') _quantTimer = setInterval(_quantTick, 250);
+  render();
+}
+
+function _quantTick() {
+  var sess = S.quant;
+  if (!sess || !sess.active || sess.mode !== 'timed') { clearInterval(_quantTimer); _quantTimer = null; return; }
+  var rem = sess.endTime - Date.now();
+  var el = document.getElementById('quant-timeleft');
+  if (el) el.textContent = _fmtMMSS(rem / 1000);
+  if (rem <= 0) { clearInterval(_quantTimer); _quantTimer = null; endQuantDrill(); }
+}
+
+function quantSubmit() {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  var inp = document.getElementById('quant-input');
+  var val = inp ? inp.value.trim() : '';
+  if (!val) return;
+  var item = sess.items[sess.idx];
+  var res = gradeQuantAnswer(item, val);
+  var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
+  st.seen++;
+  sess.answered++;
+  if (res.correct) {
+    sess.correct++; st.streak++; sess.streakCur++;
+    if (sess.streakCur > sess.streakBest) sess.streakBest = sess.streakCur;
+    // Rapid flow: a correct answer advances immediately.
+    sess.idx = _quantPickNext(sess);
+    sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+  } else {
+    st.wrong++; st.streak = 0; sess.streakCur = 0;
+    sess.missed[item.q] = item;
+    sess.showResult = true; sess.lastResult = res; sess.lastGiven = val;
+  }
+  render();
+}
+
+function quantNext() {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  sess.idx = _quantPickNext(sess);
+  sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+  render();
+}
+
+function quantSkip() {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
+  st.seen++; // count as seen so it rotates
+  sess.idx = _quantPickNext(sess);
+  sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+  render();
+}
+
+function endQuantDrill() {
+  var sess = S.quant; if (!sess) return;
+  if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
+  sess.active = false; sess.finished = true;
+  sess.elapsedSec = Math.max(1, Math.round((Date.now() - sess.startTime) / 1000));
+  if (sess.answered > 0) { try { recordStreak(); } catch (e) {} }
+  render();
+}
+
+function exitQuant() {
+  if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
+  S.quant = null;
+  render();
+}
+
+function quantAddMissedToReview() {
+  var sess = S.quant; if (!sess) return;
+  var keys = Object.keys(sess.missed || {});
+  if (!keys.length) { toast('No missed items to add.'); return; }
+  keys.forEach(function(k) {
+    var it = sess.missed[k];
+    _upsertReviewCard({ front: it.q, back: it.a, note: 'From quant drill: ' + (sess.bankName || ''), topic: sess.bankName || 'Quant', sourceSection: '' });
+  });
+  toast('Added ' + keys.length + ' card' + (keys.length === 1 ? '' : 's') + ' to your review deck.');
+  sess.missed = {};
+  render();
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function _quantBack() {
+  return '<div class="rowsb" style="margin-bottom:20px"><div style="display:flex;align-items:center;gap:10px">'
+    + '<button class="btn bg btn-sm" onclick="goStudyIntent(null)" style="padding:5px 10px;font-size:12px">&#x2190; Home</button>'
+    + '<p class="ph" style="margin:0">Quant Drill</p></div></div>';
+}
+
+function renderQuant() {
+  var sess = S.quant;
+  if (sess && (sess.active || sess.finished)) return _quantBack() + (sess.finished ? renderQuantSummary() : renderQuantActive());
+  return _quantBack() + renderQuantHome();
+}
+
+function renderQuantHome() {
+  var intro = '<p style="font-family:var(--sans);font-size:13px;color:var(--mut);margin:-6px 0 18px;line-height:1.6">'
+    + 'Paste a question bank and grind it rapid-fire with instant scoring — built for mental-math and probability reps. '
+    + 'Correct answers fly by; misses pause to show the answer and resurface more often. Items you miss can seed your spaced-review deck.</p>';
+
+  // Importer
+  var importer = '<div class="card" style="margin-bottom:16px">'
+    + '<p class="sh" style="margin-bottom:8px">Add a bank</p>'
+    + '<input class="inp" id="quant-bank-name" placeholder="Bank name (e.g. Zetamac · Green Book Ch.2)" style="margin-bottom:8px">'
+    + '<textarea class="inp" id="quant-import" placeholder="One per line: &#10;47 * 53 | 2491&#10;P(two heads in 2 flips) | 1/4&#10;&#10;…or Q:/A: lines, or a JSON array of {q,a}." style="height:130px;font-family:var(--mono,monospace);font-size:13px" oninput="setQuantImport(this.value)">' + esc(S.quantImport || '') + '</textarea>'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin:8px 0 10px">Delimiters: <code>|</code>, tab, <code>::</code>, <code>=&gt;</code>. Numbers, decimals, fractions (1/6) and percents (50%) are graded with rounding tolerance; integers must be exact.</p>'
+    + '<button class="btn bp" onclick="importQuantBank()">Add bank</button>'
+    + '</div>';
+
+  // Bank list
+  var banks = '';
+  if (S.quantBanks.length) {
+    banks = S.quantBanks.map(function(b) {
+      return '<div class="card" style="margin-bottom:10px">'
+        + '<div class="rowsb" style="margin-bottom:10px">'
+        + '<div><p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx)">' + esc(b.name) + '</p>'
+        + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut)">' + b.items.length + ' question' + (b.items.length === 1 ? '' : 's') + '</p></div>'
+        + '<button class="btn bno btn-sm" onclick="deleteQuantBank(' + b.id + ')" title="Delete bank">Delete</button>'
+        + '</div>'
+        + '<div class="row" style="gap:8px;flex-wrap:wrap">'
+        + '<button class="btn bp btn-sm" onclick="startQuantDrill(' + b.id + ',\'practice\')">Practice &rarr;</button>'
+        + '<button class="btn bg btn-sm" style="color:var(--gold);border-color:var(--gold)" onclick="startQuantDrill(' + b.id + ',\'timed\',120)">2-min sprint</button>'
+        + '<button class="btn bg btn-sm" onclick="startQuantDrill(' + b.id + ',\'timed\',300)">5-min sprint</button>'
+        + '</div></div>';
+    }).join('');
+  } else {
+    banks = empty(SVG_ICONS.check || '', 'No banks yet', 'Paste a question bank above to start drilling');
+  }
+
+  return intro + importer + (S.quantBanks.length ? '<p class="sh" style="margin:18px 0 10px">Your banks</p>' : '') + banks;
+}
+
+function renderQuantActive() {
+  var sess = S.quant;
+  var item = sess.items[sess.idx];
+  if (!item) { return '<div class="card">Bank is empty.</div>'; }
+  var acc = sess.answered ? Math.round(sess.correct / sess.answered * 100) : null;
+  var accCol = acc === null ? 'var(--mut)' : acc >= 80 ? '#49c47e' : acc >= 50 ? '#c49a3a' : '#d05555';
+  var elapsed = Math.max(1, (Date.now() - sess.startTime) / 1000);
+  var qpm = Math.round(sess.answered / (elapsed / 60));
+
+  // Stats bar
+  var stat = function(val, lbl, col) {
+    return '<div style="text-align:center;min-width:54px"><p style="font-family:var(--sans);font-size:18px;font-weight:700;color:' + col + ';line-height:1;font-variant-numeric:tabular-nums">' + val + '</p>'
+      + '<p style="font-family:var(--sans);font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-top:3px">' + lbl + '</p></div>';
+  };
+  var timeChip = sess.mode === 'timed'
+    ? stat('<span id="quant-timeleft">' + _fmtMMSS((sess.endTime - Date.now()) / 1000) + '</span>', 'Left', 'var(--gold)')
+    : stat(_fmtMMSS(elapsed), 'Time', 'var(--mut)');
+  var statsBar = '<div class="rowsb" style="margin-bottom:18px;gap:8px">'
+    + '<div class="row" style="gap:16px">'
+    + stat(sess.correct + '/' + sess.answered, 'Score', 'var(--tx)')
+    + stat(acc === null ? '—' : acc + '%', 'Accuracy', accCol)
+    + stat(String(sess.streakCur), 'Streak', sess.streakCur >= 3 ? '#f4a24a' : 'var(--mut)')
+    + stat(sess.answered ? String(qpm) : '—', 'Q/min', 'var(--mut)')
+    + timeChip
+    + '</div>'
+    + '<button class="btn bg btn-sm" onclick="endQuantDrill()">End</button>'
+    + '</div>';
+
+  var prompt = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold)">'
+    + '<p class="math-rich" style="font-family:var(--serif);font-size:22px;line-height:1.6;color:var(--tx)">' + esc(item.q) + '</p></div>';
+
+  var body;
+  if (sess.showResult && sess.lastResult) {
+    // Only shown after a miss.
+    body = '<div class="card fu" style="border-left:3px solid #d05555">'
+      + '<div class="row" style="margin-bottom:12px;gap:8px"><span style="font-family:var(--sans);font-size:12px;color:#d05555;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Incorrect</span></div>'
+      + '<div style="padding:10px 14px;background:var(--card);border-radius:7px;border:1px solid var(--brd);margin-bottom:10px">'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">You answered</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + esc(sess.lastGiven || '') + '</p></div>'
+      + '<div style="padding:10px 14px;background:var(--card2);border-radius:7px;border:1px solid var(--brd)">'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Answer</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + esc(sess.lastResult.expected || '') + '</p></div>'
+      + '<button class="btn bp" id="quant-next" style="margin-top:14px" onclick="quantNext()" title="Press Enter">Next &rarr;</button>'
+      + '</div>';
+  } else {
+    body = '<div class="card">'
+      + '<input class="inp" id="quant-input" placeholder="Answer… (Enter)" autocomplete="off" inputmode="decimal" style="height:46px;font-size:16px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();quantSubmit();}">'
+      + '<div class="row" style="margin-top:12px;gap:8px">'
+      + '<button class="btn bp" onclick="quantSubmit()">Submit</button>'
+      + '<button class="btn bg btn-sm" onclick="quantSkip()">Skip</button>'
+      + '</div></div>';
+  }
+  return statsBar + prompt + body;
+}
+
+function renderQuantSummary() {
+  var sess = S.quant;
+  var acc = sess.answered ? Math.round(sess.correct / sess.answered * 100) : 0;
+  var accCol = acc >= 80 ? '#49c47e' : acc >= 50 ? '#c49a3a' : '#d05555';
+  var qpm = sess.elapsedSec ? (sess.answered / (sess.elapsedSec / 60)).toFixed(1) : '0';
+  var missedKeys = Object.keys(sess.missed || {});
+
+  var bigStat = function(val, lbl, col) {
+    return '<div style="text-align:center;flex:1"><p style="font-family:var(--sans);font-size:30px;font-weight:700;color:' + col + ';line-height:1">' + val + '</p>'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-top:5px">' + lbl + '</p></div>';
+  };
+  var head = '<div class="card" style="margin-bottom:14px">'
+    + '<p class="sh" style="margin-bottom:14px">' + esc(sess.bankName || 'Quant Drill') + ' · ' + (sess.mode === 'timed' ? 'sprint' : 'practice') + '</p>'
+    + '<div class="row" style="gap:8px">'
+    + bigStat(sess.correct + '/' + sess.answered, 'Correct', 'var(--tx)')
+    + bigStat(acc + '%', 'Accuracy', accCol)
+    + bigStat(qpm, 'Q/min', 'var(--mut)')
+    + bigStat(String(sess.streakBest), 'Best streak', '#f4a24a')
+    + '</div></div>';
+
+  var missed = '';
+  if (missedKeys.length) {
+    var rows = missedKeys.slice(0, 20).map(function(k) {
+      var it = sess.missed[k];
+      return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd);font-family:var(--sans);font-size:13px">'
+        + '<span class="math-rich" style="flex:1;color:var(--mut)">' + esc(it.q) + '</span>'
+        + '<span class="math-rich" style="color:var(--tx);font-weight:600">' + esc(it.a) + '</span></div>';
+    }).join('');
+    missed = '<div class="card" style="margin-bottom:14px">'
+      + '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">Missed (' + missedKeys.length + ')</p>'
+      + '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="quantAddMissedToReview()" title="Create spaced-review flashcards from these">+ Add to review deck</button></div>'
+      + rows + '</div>';
+  } else if (sess.answered) {
+    missed = '<div class="card" style="margin-bottom:14px"><p style="font-family:var(--sans);font-size:13px;color:#49c47e">Clean sweep — no misses.</p></div>';
+  }
+
+  var actions = '<div class="row" style="gap:8px;flex-wrap:wrap">'
+    + '<button class="btn bp" onclick="startQuantDrill(' + sess.bankId + ',\'' + sess.mode + '\',' + (sess.mode === 'timed' ? Math.round((sess.endTime - sess.startTime) / 1000) : 0) + ')">Drill again</button>'
+    + '<button class="btn bg" onclick="exitQuant()">Choose another bank</button>'
+    + '</div>';
+  return head + missed + actions;
 }
 
 // ════════════════════════════════════════════
@@ -4872,7 +5298,7 @@ function buildSidebar() {
   var am = MODELS.find(function(m) { return m.id === S.cfg.activeModel; }) || MODELS[0];
   var html = '<div class="sb-logo">S</div>';
   TABS.forEach(function(t) {
-    html += '<button class="nb' + (S.tab === t.id ? ' act' : '') + '" onclick="setTab(\'' + t.id + '\')">'
+    html += '<button class="nb' + (S.tab === t.id ? ' act' : '') + '" aria-label="' + esc(t.label) + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + ' onclick="setTab(\'' + t.id + '\')">'
           + (TAB_ICONS[t.id] || '') + '<span class="tt">' + t.label + '</span></button>';
   });
   html += '<div class="sb-spacer"></div><div class="sb-div"></div>';
@@ -4885,7 +5311,7 @@ function buildSidebar() {
   html += '<div title="Active: ' + esc(am.name) + '" onclick="setTab(\'settings\')" '
         + 'style="width:8px;height:8px;border-radius:50%;background:' + am.col + ';box-shadow:0 0 6px ' + am.col + ';cursor:pointer;transition:all .4s;margin-bottom:8px"></div>';
   // Settings gear at the bottom (not a primary tab)
-  html += '<button class="nb' + (S.tab === 'settings' ? ' act' : '') + '" onclick="setTab(\'settings\')" style="margin-bottom:4px">'
+  html += '<button class="nb' + (S.tab === 'settings' ? ' act' : '') + '" aria-label="Settings"' + (S.tab === 'settings' ? ' aria-current="page"' : '') + ' onclick="setTab(\'settings\')" style="margin-bottom:4px">'
         + TAB_ICONS.settings + '<span class="tt">Settings</span></button>';
   sb.innerHTML = html;
 }
@@ -4950,18 +5376,36 @@ function render() {
         ta.focus();
         try { ta.selectionStart = ta.selectionEnd = ta.value.length; } catch (e) {}
       }
+    } else {
+      // Result shown (no answer box): move focus to Continue so keyboard/SR users
+      // land on the graded result and Enter advances immediately.
+      var cont = document.getElementById('q-continue');
+      if (cont) cont.focus();
     }
   }
+  // Auto-focus the quant drill (answer box, or Next after a miss).
+  if (S.tab === 'study' && S.studyIntent === 'quant' && S.quant && S.quant.active) {
+    var qin = document.getElementById('quant-input');
+    if (qin) qin.focus();
+    else { var qn = document.getElementById('quant-next'); if (qn) qn.focus(); }
+  }
+}
+
+// Stop any running quant-drill timer and clear the session (call when leaving the drill).
+function _quantTeardown() {
+  if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
+  S.quant = null;
 }
 
 function setTab(id) {
   S.tab = id;
-  if (id !== 'study') S.studyIntent = null;
+  if (id !== 'study') { S.studyIntent = null; _quantTeardown(); }
   var c = document.getElementById('content');
   if (c) c.scrollTop = 0;
   render();
 }
 function goStudyIntent(intent) {
+  if (intent !== 'quant') _quantTeardown();
   S.studyIntent = intent;
   S.tab = 'study';
   if (!intent) {
