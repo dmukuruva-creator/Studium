@@ -328,6 +328,7 @@ const S = {
   quant: null,             // active quant-drill session
   quantBanks: [],          // [{id,name,items:[{q,a}],createdAt}]
   quantImport: '',         // in-progress paste in the bank importer
+  diag: null,              // last self-diagnostics result {running, ts, checks:[...]}
 };
 
 function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
@@ -3972,7 +3973,97 @@ function renderSettings() {
     + '<div class="row" style="gap:8px;flex-wrap:wrap">'
     + '<button class="btn bg" onclick="exportBackup()">Export backup</button>'
     + '<label class="btn bg" style="cursor:pointer">Import backup<input type="file" accept=".json" style="display:none" onchange="importBackup(this.files[0])"></label>'
-    + '</div></div>';
+    + '</div></div>'
+
+    + '<div class="card" style="margin-bottom:16px">'
+    + '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">Diagnostics</p>'
+    + '<button class="btn bg btn-sm" onclick="runDiagnostics()"' + (S.diag && S.diag.running ? ' disabled' : '') + '>' + (S.diag && S.diag.running ? 'Running…' : 'Run health check') + '</button></div>'
+    + '<p style="font-family:var(--sans);font-size:13px;color:var(--mut);margin-bottom:' + (S.diag ? '12px' : '0') + '">Checks the local helper, API keys, model IDs, storage headroom, your data, and the offline graders — no API calls, nothing leaves your machine.</p>'
+    + _renderDiagResults()
+    + '</div>';
+}
+
+function _renderDiagResults() {
+  var d = S.diag;
+  if (!d || (!d.checks && !d.running)) return '';
+  if (d.running && !d.checks) return '<p style="font-family:var(--sans);font-size:13px;color:var(--mut)">Running…</p>';
+  var icon = function (state) {
+    if (state === 'ok')   return '<span style="color:#49c47e;font-weight:700">✓</span>';
+    if (state === 'warn') return '<span style="color:#c49a3a;font-weight:700">!</span>';
+    return '<span style="color:#d05555;font-weight:700">✗</span>';
+  };
+  var rows = (d.checks || []).map(function (c) {
+    return '<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--brd);font-family:var(--sans);font-size:13px;align-items:baseline">'
+      + '<span style="width:14px;flex-shrink:0;text-align:center">' + icon(c.state) + '</span>'
+      + '<span style="flex:1;color:var(--tx)">' + esc(c.label) + '</span>'
+      + '<span style="color:var(--mut);font-size:12px;text-align:right">' + esc(c.detail || '') + '</span>'
+      + '</div>';
+  }).join('');
+  var nBad = (d.checks || []).filter(function (c) { return c.state === 'bad'; }).length;
+  var nWarn = (d.checks || []).filter(function (c) { return c.state === 'warn'; }).length;
+  var summaryCol = nBad ? '#d05555' : nWarn ? '#c49a3a' : '#49c47e';
+  var summary = '<p style="font-family:var(--sans);font-size:12px;color:' + summaryCol + ';font-weight:700;margin-top:10px">'
+    + (nBad ? nBad + ' problem' + (nBad === 1 ? '' : 's') + ' found' : nWarn ? 'All systems go (' + nWarn + ' note' + (nWarn === 1 ? '' : 's') + ')' : 'All systems green') + '</p>';
+  return '<div>' + rows + '</div>' + summary;
+}
+
+async function runDiagnostics() {
+  S.diag = { running: true, checks: null }; render();
+  var checks = [];
+  function add(label, state, detail) { checks.push({ label: label, state: state, detail: detail || '' }); }
+
+  // 1) Local helper / server reachable
+  try {
+    var r = await fetch('/keychain/status', { method: 'GET' });
+    add('Local helper (server)', r.ok ? 'ok' : 'bad', r.ok ? 'reachable' : 'HTTP ' + r.status);
+  } catch (e) { add('Local helper (server)', 'bad', 'unreachable — launch via Studium.command'); }
+
+  // 2) API keys configured
+  var provs = [['anthropic', 'Anthropic'], ['openai', 'OpenAI'], ['google', 'Google'], ['openai-compatible', 'OpenAI-compatible']];
+  var keyed = provs.filter(function (p) { return hasKey(p[0]); });
+  add('API keys configured', keyed.length ? 'ok' : 'warn',
+      keyed.length ? keyed.map(function (p) { return p[1]; }).join(', ') : 'none — add one to generate/grade');
+
+  // 3) Model IDs validated against the live provider lists
+  try {
+    await validateModels();
+    var active = getActiveModel();
+    var dead = isModelDead(active);
+    add('Active model', dead ? 'warn' : 'ok', (active ? active.name : '—') + (dead ? ' — not in live list' : ''));
+  } catch (e) { add('Active model', 'warn', 'could not validate (offline?)'); }
+
+  // 4) Storage headroom
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      var est = await navigator.storage.estimate();
+      var usedMB = (est.usage || 0) / 1048576, quotaMB = (est.quota || 0) / 1048576;
+      var pct = quotaMB ? Math.round(usedMB / quotaMB * 100) : 0;
+      add('Storage', pct > 90 ? 'warn' : 'ok', usedMB.toFixed(1) + ' MB used (' + pct + '% of quota)');
+    } else { add('Storage', 'ok', 'usage API unavailable'); }
+  } catch (e) { add('Storage', 'warn', 'estimate failed'); }
+
+  // 5) Your data
+  var due = S.cards.filter(function (c) { return !isCardSuspended(c) && c.fsrs && fsrsIsDue(c.fsrs); }).length;
+  var bankQs = S.quantBanks.reduce(function (n, b) { return n + b.items.length; }, 0);
+  add('Library', 'ok', S.docs.length + ' docs · ' + S.cards.length + ' cards (' + due + ' due) · ' + S.hist.length + ' history');
+  add('Quant banks', 'ok', S.quantBanks.length + ' bank' + (S.quantBanks.length === 1 ? '' : 's') + ' · ' + bankQs + ' questions');
+
+  // 6) Offline graders self-test (deterministic — the instant-feedback core)
+  var gp = 0, gt = 0;
+  function gtest(c) { gt++; if (c) gp++; }
+  try {
+    gtest(gradeCloze({ blank: 'x' }, ' X ').score === 3);
+    gtest(_tryNumericGrade({ answer: '42' }, '42').score === 3);
+    gtest(_tryNumericGrade({ answer: 'word' }, 'x') === null);
+    gtest(gradeQuantAnswer({ a: '2491' }, '2491').correct === true);
+    gtest(gradeQuantAnswer({ a: '1/6' }, '0.1667').correct === true);
+    gtest(parseQuantBank('a | 1\nb | 2').length === 2);
+    gtest(_interleaveByTopic([{ t: 'a' }, { t: 'a' }, { t: 'b' }], function (x) { return x.t; }).length === 3);
+  } catch (e) { /* counted as failures below */ }
+  add('Offline graders self-test', gp === gt ? 'ok' : 'bad', gp + '/' + gt + ' passing');
+
+  S.diag = { running: false, ts: Date.now(), checks: checks };
+  render();
 }
 
 // ════════════════════════════════════════════
