@@ -1556,9 +1556,9 @@ function gradePayload(q, answer) {
     ? '\n\nSource notes (authoritative — evaluate against these, not the model answer alone):\n"""\n' + srcText + '\n"""'
     : '';
   var rubric = '\nEvaluate each criterion independently:\n- Correctness: is the core claim right?\n- Completeness: are key points covered?\n- Accuracy: no false statements?\nSum to a score 0-3.';
-  const sys = _personaSys() + 'You are an expert academic evaluator. Evaluate the student answer against the source notes (when provided) and the model answer.' + rubric + ' Reply ONLY with valid JSON — no prose:\n{"correct":true/false,"score":0-3,"feedback":"1-2 concise sentences on what was right or wrong, naming the specific error","modelAnswer":"brief answer"}\nScoring: 3=fully correct, 2=mostly right, 1=partial, 0=wrong.';
+  const sys = _personaSys() + 'You are an expert academic evaluator whose goal is to build the student\'s understanding and intuition, not just mark right/wrong.' + rubric + ' Reply ONLY with valid JSON — no prose:\n{"correct":true/false,"score":0-3,"feedback":"1-2 concise sentences on what was right or wrong, naming the specific error or the precise gap","keyIdea":"the single underlying principle or intuition that makes the correct answer correct, phrased so it transfers to similar problems (1-2 sentences, plain and memorable)","modelAnswer":"brief answer"}\nScoring: 3=fully correct, 2=mostly right, 1=partial, 0=wrong. Always fill keyIdea, even when the answer is correct, to deepen the mental model.';
   const user = 'Question: ' + q.question + '\nModel answer: ' + q.answer + '\nStudent answer: ' + answer + srcBlock;
-  const max = 600;
+  const max = 800;
   return { sys, user, max };
 }
 
@@ -2654,8 +2654,13 @@ function renderQuiz() {
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Reference answer</p>'
       + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + esc(S.result.modelAnswer) + '</p>'
       + '</div>'
+      + (S.result.keyIdea ? '<div style="margin-top:14px;padding:12px 16px;background:var(--acc-t);border-radius:7px;border-left:3px solid var(--gold)">'
+        + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Key idea</p>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;color:var(--tx);line-height:1.7">' + esc(S.result.keyIdea) + '</p>'
+        + '</div>' : '')
       + '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">'
-      + '<button class="btn bp" onclick="nextQ()">Continue &rarr;</button>'
+      + '<button class="btn bp" onclick="nextQ()" title="Press Enter">Continue &rarr;</button>'
+      + (S.result.score < 2 ? '<button class="btn bg btn-sm" style="color:var(--gold);border-color:var(--gold)" onclick="focusFollowUp()" title="Practice this same concept from a different angle, right now">Focused follow-up</button>' : '')
       + (S.missedQOffer ? '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="addMissedToReview()" title="Add this question as a flashcard to review tomorrow">+ Add to review deck</button>' : '')
       + '<div style="flex:1"></div>'
       + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);align-self:center">Override:</span>'
@@ -3435,6 +3440,10 @@ function renderToday() {
         + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Reference answer</p>'
         + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.65">' + esc(S.todayResult.modelAnswer || '') + '</p>'
         + '</div>'
+        + (S.todayResult.keyIdea ? '<div style="margin-top:10px;padding:10px 14px;background:var(--acc-t);border-radius:7px;border-left:3px solid var(--gold)">'
+          + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Key idea</p>'
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.7">' + esc(S.todayResult.keyIdea) + '</p>'
+          + '</div>' : '')
         + '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">'
         + '<button class="btn bp" onclick="todayNextQ()">Continue &rarr;</button>'
         + (S.missedQOffer ? '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="addMissedToReview()">+ Add to review deck</button>' : '')
@@ -3450,7 +3459,7 @@ function renderToday() {
     } else {
       itemHTML = qCard
         + '<div class="card">'
-        + '<textarea class="inp" id="today-q-ans" placeholder="Your answer…" style="height:90px" onkeydown="if(e&&e.ctrlKey&&e.key===\'Enter\')todaySubmitQ()">' + esc(S.todayAns) + '</textarea>'
+        + '<textarea class="inp" id="today-q-ans" placeholder="Your answer… (Ctrl+Enter to submit)" style="height:90px" oninput="S.todayAns=this.value" onkeydown="if(event.ctrlKey&&event.key===\'Enter\')todaySubmitQ()">' + esc(S.todayAns) + '</textarea>'
         + '<div class="row" style="margin-top:10px">'
         + '<button class="btn bp" onclick="todaySubmitQ()">Submit</button>'
         + '<button class="btn bg btn-sm" onclick="todayNextQ()" style="color:var(--dim)">Skip</button>'
@@ -4920,13 +4929,23 @@ function render() {
       dz.addEventListener('drop',      function(e) { e.preventDefault(); dz.classList.remove('dg'); handleFiles(e.dataTransfer.files); });
     }
   }
-  // Wire quiz char count (Drill intent inside Study)
+  // Wire quiz answer box (Drill intent inside Study)
   if (S.tab === 'study' && S.studyIntent === 'drill') {
     var ta = document.getElementById('q-ans');
-    var cc = document.getElementById('char-ct');
-    if (ta && cc) {
-      ta.addEventListener('input', function() { cc.textContent = ta.value.length; });
+    if (ta) {
+      var cc = document.getElementById('char-ct');
+      // Persist the in-progress answer so a re-render (e.g. "Show hint") doesn't wipe it.
+      ta.addEventListener('input', function() {
+        S.ans = ta.value;
+        if (cc) cc.textContent = ta.value.length;
+      });
       if (S.ans) ta.value = S.ans;
+      if (cc) cc.textContent = ta.value.length;
+      // Auto-focus the answer field while awaiting an answer, cursor at the end.
+      if (!S.result && _gradingStream === null) {
+        ta.focus();
+        try { ta.selectionStart = ta.selectionEnd = ta.value.length; } catch (e) {}
+      }
     }
   }
 }
@@ -5375,6 +5394,34 @@ function skipQ() {
 }
 
 function toggleHint() { _hintShown = !_hintShown; render(); }
+
+// Deliberate practice: after a miss, generate ONE targeted question on the same
+// concept from a different angle and queue it for immediate attempt (desirable
+// difficulty + spacing-within-session). Grounded in the same source section.
+async function focusFollowUp() {
+  var q = S.queue[S.qi];
+  if (!q) return;
+  if (!hasKey(getActiveModel().prov)) { toast('Add an API key in Settings first.'); setTab('settings'); return; }
+  var ctx = studyContext();
+  var src = _sourceTextForQuestion(q);
+  var gap = (S.result && (S.result.misconception || S.result.feedback)) || '';
+  showSpin('Building a focused follow-up…');
+  try {
+    var items = await genStructured({
+      sys: _personaSys() + 'You are a rigorous tutor running deliberate practice. The student just struggled with a question. Generate exactly ONE NEW question that tests the SAME underlying concept from a different angle — not a reworded copy — to rebuild understanding and intuition. Prefer an "apply" or "analyze" level question that forces them to use the idea, and give a model answer that shows the reasoning. Use LaTeX delimiters for math when helpful. Reply ONLY with a valid JSON array:\n[{"question":"...","hint":"short nudge","answer":"model answer with reasoning","topic":"' + jsEsc(q.topic || '') + '","sourceSection":"' + jsEsc(q.sourceSection || '') + '","level":"apply"}]',
+      user: 'Concept under practice (from this question): ' + q.question + '\nThe correct idea: ' + (q.answer || '') + '\nWhere the student went wrong: ' + gap + '\n\nStudy material:\n' + (src ? src.slice(0, 4000) : contextText(ctx.text)),
+      max: 1200, temp: 0.6, schema: JSON_SCHEMAS.quizList, task: 'generation',
+      parse: function(raw) { return validItems(unwrapStructuredOutput(pj(raw)), ['question','answer'], ['hint','topic','sourceSection','level']); },
+    });
+    var fixed = _validateAndFixSections(items);
+    if (!fixed.length) { toast('Could not generate a follow-up — try again.'); return; }
+    var followUp = Object.assign({ id: Date.now() }, fixed[0]);
+    // Insert right after the current question, then advance to it.
+    S.queue.splice(S.qi + 1, 0, followUp);
+    nextQ();
+  } catch(e) { toast('Follow-up failed: ' + e.message); }
+  finally { hideSpin(); }
+}
 
 async function practiceWeakTopic(topic) {
   if (!S.docs.length) return;
@@ -5879,6 +5926,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     var typing = tag === 'input' || tag === 'textarea' || tag === 'select';
 
     if (e.ctrlKey && e.key === 'Enter' && S.tab === 'study' && S.studyIntent === 'drill' && !S.result && _gradingStream === null) { submitQ(); return; }
+    // After grading in Drill, plain Enter advances to the next question (completes the keyboard loop).
+    if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && S.tab === 'study' && S.studyIntent === 'drill' && S.result && _gradingStream === null && !typing) { e.preventDefault(); nextQ(); return; }
 
     if (S.tab === 'study' && !typing && S.todayActive) {
       var todayItem = S.todayQ[S.todayIdx];
