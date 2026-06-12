@@ -279,15 +279,6 @@ var SCHEMA_GRADE = {
   additionalProperties: false,
 };
 
-function _extractItems(raw) {
-  try {
-    var parsed = pj(raw);
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed && Array.isArray(parsed.items)) return parsed.items;
-  } catch(e) {}
-  return [];
-}
-
 // ════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════
@@ -1166,7 +1157,6 @@ function isFatal(msg) {
   return m.includes('401') || m.includes('unauthorized') || m.includes('invalid api key') ||
          m.includes('incorrect api key') || m.includes('no') && m.includes('key configured');
 }
-function isRL(msg) { return isRetryable(msg); }  // legacy alias
 
 function extractErrMsg(e, status) {
   if (e && e.error && typeof e.error === 'object') return e.error.message || JSON.stringify(e.error);
@@ -1783,11 +1773,6 @@ function validItems(items, fields, optFields) {
   return cleaned;
 }
 
-function trimDoc(t, max) {
-  max = max || 3000;
-  return t.length <= max ? t : t.slice(0, max) + '\n[truncated]';
-}
-
 // Phase 3: send the whole scoped section to a long-context model;
 // only truncate when the content genuinely exceeds the token budget.
 const TOKEN_BUDGET = 24000; // ~96k chars at chars/4 ≈ tokens
@@ -2286,11 +2271,6 @@ function headingMatches(text) {
   return out;
 }
 
-function selectedSection() {
-  var secs = studySections();
-  return secs.find(function(s) { return s.id === S.sectionScope; }) || null;
-}
-
 function sectionPicker() {
   var secs = studySections();
   var subjs = activeSubjects();
@@ -2351,11 +2331,6 @@ function renderMathInView() {
     try { window.renderMathInElement(el, _katexOpts); } catch(e) {}
   });
 }
-function mapLabel(s) {
-  s = String(s || '');
-  return /(\$|\\\(|\\\[|\\begin\{)/.test(s) ? s : (s.length > 13 ? s.slice(0,11) + '\u2026' : s);
-}
-
 function scoreColor(s) { return s >= 2 ? '#49c47e' : s === 1 ? '#c49a3a' : '#d05555'; }
 
 function badge(label, col) {
@@ -2472,68 +2447,6 @@ function forceLayout(nodes, edges, W, H) {
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
-}
-
-function pointDistance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function rectsOverlap(a, b, padding) {
-  padding = padding || 0;
-  return !(a.x + a.w + padding < b.x || b.x + b.w + padding < a.x || a.y + a.h + padding < b.y || b.y + b.h + padding < a.y);
-}
-
-function computeEdgeLabelPositions(nodes, edges) {
-  var labelW = 112;
-  var labelH = 36;
-  var nodeRects = nodes.map(function(n) {
-    return { x: n.x - labelW / 2, y: n.y - labelH / 2, w: labelW, h: labelH };
-  });
-  var placedRects = [];
-  return edges.map(function(edge, idx) {
-    var source = nodes.find(function(n) { return n.id === edge.source; });
-    var target = nodes.find(function(n) { return n.id === edge.target; });
-    if (!source || !target) return null;
-
-    var dx = target.x - source.x;
-    var dy = target.y - source.y;
-    var len = Math.hypot(dx, dy) || 1;
-    var nx = -dy / len;
-    var ny = dx / len;
-    var mid = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 };
-    var candidates = [
-      { x: mid.x + nx * 40, y: mid.y + ny * 40 },
-      { x: mid.x - nx * 40, y: mid.y - ny * 40 },
-      { x: mid.x + nx * 56, y: mid.y + ny * 56 },
-      { x: mid.x - nx * 56, y: mid.y - ny * 56 },
-      { x: mid.x + nx * 30 + (dx / len) * 18, y: mid.y + ny * 30 + (dy / len) * 18 },
-      { x: mid.x - nx * 30 + (dx / len) * 18, y: mid.y - ny * 30 + (dy / len) * 18 },
-      { x: mid.x + nx * 72, y: mid.y + ny * 72 },
-      { x: mid.x - nx * 72, y: mid.y - ny * 72 },
-    ];
-
-    var best = null;
-    var bestScore = -Infinity;
-    candidates.forEach(function(candidate) {
-      var rect = { x: candidate.x - labelW / 2, y: candidate.y - labelH / 2, w: labelW, h: labelH };
-      if (pointDistance(candidate, source) < 56 || pointDistance(candidate, target) < 56) return;
-      if (nodeRects.some(function(nodeRect) { return rectsOverlap(rect, nodeRect, 12); })) return;
-      if (placedRects.some(function(placedRect) { return rectsOverlap(rect, placedRect, 12); })) return;
-      var score = 100 - pointDistance(candidate, mid) * 0.8;
-      if (score > bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
-    });
-
-    if (!best) {
-      var fallback = { x: mid.x + nx * 48 * (idx % 2 === 0 ? 1 : -1), y: mid.y + ny * 48 * (idx % 2 === 0 ? 1 : -1) };
-      best = fallback;
-    }
-
-    placedRects.push({ x: best.x - labelW / 2, y: best.y - labelH / 2, w: labelW, h: labelH });
-    return { source: edge.source, target: edge.target, x: best.x, y: best.y };
-  }).filter(Boolean);
 }
 
 function updateMapSize() {
