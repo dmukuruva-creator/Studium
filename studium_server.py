@@ -9,8 +9,10 @@ The AI proxy (POST /proxy/<provider>) forwards model calls server-side so:
 """
 
 import http.client
+import ipaddress
 import json
 import os
+import socket
 import ssl
 import subprocess
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +22,63 @@ HOST = "127.0.0.1"
 PORT = 58743
 ORIGIN = f"http://{HOST}:{PORT}"
 SERVICE = "Studium"
+
+# Cap request bodies so an oversized upload can't exhaust memory (STU-1).
+MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+# Opt-in escape hatch for users who deliberately run a model server on a LAN
+# host (not loopback). Off by default — the proxy refuses private/link-local
+# targets so it can't be aimed at cloud metadata (169.254.169.254) or internal
+# services.
+ALLOW_PRIVATE_PROXY = os.environ.get("STUDIUM_ALLOW_PRIVATE_PROXY") == "1"
+
+
+def validate_target_url(url: str) -> None:
+    """
+    SSRF guard for user-supplied proxy targets (STU-1).
+
+    Requires https except for loopback (where http is allowed for local model
+    servers). Resolves the host and rejects any private / link-local / reserved
+    / multicast address unless STUDIUM_ALLOW_PRIVATE_PROXY=1. Raises ValueError
+    on anything disallowed.
+    """
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid target URL")
+
+    try:
+        port = parsed.port or (443 if scheme == "https" else 80)
+    except ValueError:
+        raise ValueError("Invalid target URL port")
+
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise ValueError("Could not resolve target host")
+    ips = [ipaddress.ip_address(info[4][0]) for info in infos]
+    if not ips:
+        raise ValueError("Could not resolve target host")
+
+    all_loopback = all(ip.is_loopback for ip in ips)
+
+    if scheme == "http":
+        if not all_loopback:
+            raise ValueError("http:// is only allowed for localhost targets")
+    elif scheme != "https":
+        raise ValueError("Target URL must use https")
+
+    if all_loopback:
+        return  # local model server (e.g. Ollama) — explicitly allowed
+    if ALLOW_PRIVATE_PROXY:
+        return
+
+    for ip in ips:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError(
+                "Target host resolves to a private/link-local address — blocked"
+            )
 KEYCHAIN_FIELDS = (
     "anthropicKey",
     "openaiKey",
@@ -144,8 +203,10 @@ class StudiumHandler(SimpleHTTPRequestHandler):
             self._send_json(400, {"error": "Unknown key field"})
             return
 
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length).decode("utf-8")
+        raw = self._read_body_capped()
+        if raw is None:
+            return  # 413 already sent
+        body = raw.decode("utf-8")
         try:
             payload = json.loads(body or "{}")
         except json.JSONDecodeError:
@@ -224,6 +285,21 @@ class StudiumHandler(SimpleHTTPRequestHandler):
 
     # ── AI proxy ──────────────────────────────────────────────────────────────
 
+    def _read_body_capped(self):
+        """
+        Read the request body, rejecting anything over MAX_BODY_BYTES with 413
+        (STU-1). Returns the bytes, or None if a 413 was already sent.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json(400, {"error": "Invalid Content-Length"})
+            return None
+        if length < 0 or length > MAX_BODY_BYTES:
+            self._send_json(413, {"error": "Request body too large"})
+            return None
+        return self.rfile.read(length)
+
     def _handle_proxy(self):
         parts = self.path.split("/", 2)
         if len(parts) < 3 or not parts[2]:
@@ -231,8 +307,9 @@ class StudiumHandler(SimpleHTTPRequestHandler):
             return
         provider = parts[2]
 
-        length = int(self.headers.get("Content-Length", "0"))
-        raw_body = self.rfile.read(length)
+        raw_body = self._read_body_capped()
+        if raw_body is None:
+            return  # 413 already sent
         try:
             payload = json.loads(raw_body or b"{}")
         except json.JSONDecodeError:
@@ -297,6 +374,7 @@ class StudiumHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Missing _base_url in request body for openai-compatible provider")
             if not base_url.endswith("/chat/completions"):
                 base_url += "/chat/completions"
+            validate_target_url(base_url)  # SSRF guard (STU-1)
             headers = {"Content-Type": "application/json"}
             if key:
                 headers["Authorization"] = f"Bearer {key}"
