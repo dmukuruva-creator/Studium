@@ -2412,7 +2412,7 @@ function forceLayout(nodes, edges, W, H) {
       y: H/2 + 155 * Math.sin(2*Math.PI*i/nodes.length - Math.PI/2),
     });
   });
-  var k = Math.sqrt(W * H / Math.max(nodes.length, 1)) * 0.6;
+  var k = Math.sqrt(W * H / Math.max(nodes.length, 1)) * 0.82;  // airier spacing
   for (var it = 0; it < 90; it++) {
     var fx = nodes.map(function() { return 0; });
     var fy = nodes.map(function() { return 0; });
@@ -2777,7 +2777,16 @@ function renderCards() {
 // ════════════════════════════════════════════
 // RENDER — CONCEPT MAP
 // ════════════════════════════════════════════
-var CAT_COL = { core:'#c49a3a', method:'#35b59b', example:'#4c79f2', theorem:'#8e6ef0' };
+// Aegean / "Guide of Greece" palette: sea-blue, olive, terracotta, Greek gold.
+var CAT_COL = { core:'#1C6E8C', method:'#6E8B5B', example:'#C66B3D', theorem:'#C9A24B' };
+// Light tint of a category hex (mixed toward whitewashed limestone) for node fills.
+function lmTint(hex, mix) {
+  var h = String(hex || '#cccccc').replace('#',''); if (h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16);
+  if (isNaN(r)) return '#F4F1EA';
+  var m = mix==null ? 0.86 : mix;
+  return 'rgb('+Math.round(r+(255-r)*m)+','+Math.round(g+(255-g)*m)+','+Math.round(b+(255-b)*m)+')';
+}
 
 function renderMap() {
   if (!S.docs.length) return empty(SVG_ICONS.book, 'Upload documents first', 'Add study material in the Library tab');
@@ -2895,7 +2904,7 @@ function lmInit() {
   if (!container || !S.cmap || !S.cmap.nodes.length) return;
   var dpr = LM.dpr = window.devicePixelRatio || 1;
   var W = LM.W = Math.max(container.clientWidth || 600, 320);
-  var H = LM.H = Math.max(Math.round(W * 0.60), 380);
+  var H = LM.H = Math.max(Math.round(W * 0.66), 420);  // taller canvas = more breathing room
 
   // Create or reuse canvas
   if (!LM.canvas || LM.canvas.parentNode !== container) {
@@ -2928,7 +2937,7 @@ function lmInit() {
     deg[e.target] = (deg[e.target]||0) + str;
   });
 
-  var catBase = {core:20, theorem:18, method:16, example:14};
+  var catBase = {core:24, theorem:21, method:19, example:17};
   var placed = forceLayout(S.cmap.nodes, S.cmap.edges, W, H);
 
   LM.nodes = placed.map(function(n) {
@@ -2972,14 +2981,14 @@ function lmPhysics() {
     return;
   }
 
-  var k = Math.sqrt(W * H / Math.max(N.length,1)) * 0.56;
+  var k = Math.sqrt(W * H / Math.max(N.length,1)) * 0.78;  // airier spacing
   var fx = N.map(function(){return 0;}), fy = N.map(function(){return 0;});
 
   for (var i=0; i<N.length; i++) {
     for (var j=i+1; j<N.length; j++) {
       var dx = N[j].x - N[i].x || 0.01, dy = N[j].y - N[i].y || 0.01;
       var d2 = dx*dx+dy*dy, d = Math.sqrt(d2)||0.01;
-      var minD = N[i].r + N[j].r + 18;
+      var minD = N[i].r + N[j].r + 34;  // generous breathing room between nodes
       var f = d < minD ? k*k/d2 + (minD-d)*0.5 : k*k/d2;
       fx[i]-=f*dx/d; fy[i]-=f*dy/d; fx[j]+=f*dx/d; fy[j]+=f*dy/d;
     }
@@ -2995,7 +3004,7 @@ function lmPhysics() {
   });
 
   N.forEach(function(n,i) {
-    fx[i]+=(W/2-n.x)*0.016; fy[i]+=(H/2-n.y)*0.016;
+    fx[i]+=(W/2-n.x)*0.012; fy[i]+=(H/2-n.y)*0.012;  // gentler centering = more spread
   });
 
   N.forEach(function(n,i) {
@@ -3014,14 +3023,15 @@ function lmDraw() {
   var zx=LM.zoom.x, zy=LM.zoom.y, zk=LM.zoom.k;
 
   ctx.clearRect(0,0,W,H);
-  var bg=ctx.createRadialGradient(W*.28,H*.2,0,W*.5,H*.5,W*.75);
-  bg.addColorStop(0,'#182040'); bg.addColorStop(1,'#0b0e1a');
+  // Whitewashed Aegean wash — sunlit limestone fading to a faint sea haze.
+  var bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#FBFAF6'); bg.addColorStop(1,'#E7EFF1');
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
 
-  // Dot grid
-  ctx.fillStyle='rgba(59,69,100,0.18)';
-  for (var gi=0;gi<Math.ceil(W/58)+1;gi++) for (var gj=0;gj<Math.ceil(H/50)+1;gj++) {
-    ctx.beginPath(); ctx.arc(gi*58+10,gj*50+14,1.1,0,Math.PI*2); ctx.fill();
+  // Faint, sparse dot grid — gentle structure without clutter (airy).
+  ctx.fillStyle='rgba(120,150,165,0.09)';
+  for (var gi=0;gi<Math.ceil(W/64)+1;gi++) for (var gj=0;gj<Math.ceil(H/64)+1;gj++) {
+    ctx.beginPath(); ctx.arc(gi*64+12,gj*64+16,1,0,Math.PI*2); ctx.fill();
   }
 
   var nbIds = {};
@@ -3038,71 +3048,77 @@ function lmDraw() {
     var src=N.find(function(n){return n.id===e.source;}), tgt=N.find(function(n){return n.id===e.target;});
     if (!src||!tgt) return;
     var isHi=sel&&(e.source===sel||e.target===sel), isDim=sel&&!isHi;
-    ctx.globalAlpha = isDim ? 0.12 : (isHi ? 1 : 0.72);
+    ctx.globalAlpha = isDim ? 0.16 : (isHi ? 1 : 0.5);
 
     var dx=tgt.x-src.x, dy=tgt.y-src.y, len=Math.sqrt(dx*dx+dy*dy)||1;
     var side=(ei%2===0)?1:-1;
-    var cpx=(src.x+tgt.x)/2-(dy/len)*30*side, cpy=(src.y+tgt.y)/2+(dx/len)*30*side;
+    var cpx=(src.x+tgt.x)/2-(dy/len)*26*side, cpy=(src.y+tgt.y)/2+(dx/len)*26*side;
     var a0=Math.atan2(cpy-src.y,cpx-src.x), a1=Math.atan2(cpy-tgt.y,cpx-tgt.x);
     var sx=src.x+Math.cos(a0)*src.r, sy=src.y+Math.sin(a0)*src.r;
     var ex=tgt.x+Math.cos(a1)*tgt.r, ey=tgt.y+Math.sin(a1)*tgt.r;
     var str=Number(e.strength)||1;
 
     ctx.beginPath(); ctx.moveTo(sx,sy); ctx.quadraticCurveTo(cpx,cpy,ex,ey);
-    ctx.strokeStyle=isHi?'#c49a3a':'rgba(101,114,143,0.7)';
-    ctx.lineWidth=isHi?1.4+str*.5:0.7+str*.25;
-    ctx.setLineDash(isHi?[]:[5,4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.lineCap='round';
+    ctx.strokeStyle=isHi?'#C9A24B':'rgba(92,120,138,0.6)';
+    ctx.lineWidth=isHi?1.7+str*.5:1+str*.3;
+    ctx.stroke(); ctx.lineCap='butt';
 
     // Arrowhead
     var aa=Math.atan2(ey-cpy,ex-cpx), al=7+(isHi?2:0);
     ctx.beginPath(); ctx.moveTo(ex,ey);
     ctx.lineTo(ex-al*Math.cos(aa-.45),ey-al*Math.sin(aa-.45));
     ctx.lineTo(ex-al*Math.cos(aa+.45),ey-al*Math.sin(aa+.45));
-    ctx.closePath(); ctx.fillStyle=isHi?'#c49a3a':'rgba(101,114,143,0.7)'; ctx.fill();
+    ctx.closePath(); ctx.fillStyle=isHi?'#C9A24B':'rgba(92,120,138,0.6)'; ctx.fill();
 
-    // Edge label on highlighted
+    // Edge label on highlighted — serif on a soft whitewashed chip.
     if (e.label && isHi) {
       var lx=(src.x+tgt.x)/2, ly=(src.y+tgt.y)/2;
-      ctx.font='600 10px Outfit,Inter,sans-serif';
+      ctx.font='500 10.5px Georgia,"Times New Roman",serif';
       var lab=e.label.length>16?e.label.slice(0,14)+'…':e.label;
-      var tw=ctx.measureText(lab).width, pad=7, rH=17;
-      ctx.fillStyle='rgba(9,12,26,0.94)';
-      lmRRect(ctx,lx-tw/2-pad,ly-rH/2,tw+pad*2,rH,3); ctx.fill();
-      ctx.strokeStyle='rgba(196,154,58,0.45)'; ctx.lineWidth=0.7; ctx.stroke();
-      ctx.fillStyle='#c49a3a'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      var tw=ctx.measureText(lab).width, pad=8, rH=19;
+      ctx.fillStyle='rgba(255,255,255,0.96)';
+      lmRRect(ctx,lx-tw/2-pad,ly-rH/2,tw+pad*2,rH,4); ctx.fill();
+      ctx.strokeStyle='rgba(201,162,75,0.55)'; ctx.lineWidth=0.8; ctx.stroke();
+      ctx.fillStyle='#9A7A2E'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(lab,lx,ly);
     }
     ctx.globalAlpha=1;
   });
 
-  // Draw nodes
+  // Draw nodes — whitewashed "Cycladic" discs with a category-color rim.
   N.forEach(function(n) {
     var isSel=n.id===sel, isHov=n.id===hov, isNbr=nbIds[n.id];
     var isDim=sel&&!isSel&&!isNbr;
-    var pulse=Math.sin(t*.055+N.indexOf(n)*.75)*2.2;
-    ctx.globalAlpha=isDim?0.2:1;
+    var pulse=Math.sin(t*.05+N.indexOf(n)*.7)*1.6;
+    ctx.globalAlpha=isDim?0.3:1;
 
-    if (isSel||isHov) { ctx.shadowBlur=isSel?24+pulse:13; ctx.shadowColor=n.col+(isSel?'bb':'77'); }
-
+    // halo for selected / neighbour
     if (isSel) {
-      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+8+pulse,0,Math.PI*2);
-      ctx.strokeStyle=n.col+'44'; ctx.lineWidth=2.5; ctx.stroke();
-    }
-    if (isNbr&&sel) {
-      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+4,0,Math.PI*2);
-      ctx.strokeStyle=n.col+'30'; ctx.lineWidth=2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+9+pulse,0,Math.PI*2);
+      ctx.strokeStyle=n.col+'55'; ctx.lineWidth=2.5; ctx.stroke();
+    } else if (isNbr&&sel) {
+      ctx.beginPath(); ctx.arc(n.x,n.y,n.r+5,0,Math.PI*2);
+      ctx.strokeStyle=n.col+'3a'; ctx.lineWidth=2; ctx.stroke();
     }
 
+    // soft sun-shadow beneath the disc, then a whitewashed fill tinted by category
     ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
-    var rg=ctx.createRadialGradient(n.x-n.r*.3,n.y-n.r*.3,0,n.x,n.y,n.r);
-    rg.addColorStop(0,'#1e2744'); rg.addColorStop(1,'#0d1020');
+    ctx.shadowColor='rgba(40,72,92,0.20)'; ctx.shadowBlur=(isSel||isHov)?16:9; ctx.shadowOffsetY=3;
+    var rg=ctx.createRadialGradient(n.x-n.r*.4,n.y-n.r*.5,n.r*0.1,n.x,n.y,n.r);
+    rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(1,lmTint(n.col));
     ctx.fillStyle=rg; ctx.fill();
-    ctx.shadowBlur=0;
-    ctx.strokeStyle=n.col+(isSel?'ff':isNbr?'cc':'99');
-    ctx.lineWidth=isSel?2.8:isNbr?2:1.6; ctx.stroke();
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
 
-    ctx.fillStyle=isSel?n.col:isDim?n.col+'55':isNbr?n.col+'ee':n.col+'bb';
-    ctx.font=(isSel?'700':'600')+' '+(n.r>22?'11':'10')+'px Outfit,Inter,sans-serif';
+    // category-color rim
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+    ctx.strokeStyle=n.col; ctx.globalAlpha=(isDim?0.3:1)*(isSel?1:0.85);
+    ctx.lineWidth=isSel?2.6:isNbr?2:1.5; ctx.stroke();
+    ctx.globalAlpha=isDim?0.3:1;
+
+    // label — elegant serif in dark slate, on the white disc
+    ctx.fillStyle=isDim?'rgba(42,59,69,0.5)':'#2A3B45';
+    ctx.font=(isSel?'600':'500')+' '+(n.r>24?'12':'11')+'px Georgia,"Times New Roman",serif';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     lmDrawLabel(ctx, n.label, n.x, n.y, n.r*1.7);
     ctx.globalAlpha=1;
@@ -3110,16 +3126,16 @@ function lmDraw() {
 
   ctx.restore();
 
-  // Overlays
+  // Overlays (muted slate, serif)
   if (zk>1.12) {
-    ctx.fillStyle='rgba(196,154,58,0.55)'; ctx.font='11px Outfit,sans-serif';
+    ctx.fillStyle='rgba(92,120,138,0.7)'; ctx.font='11px Georgia,serif';
     ctx.textAlign='right'; ctx.textBaseline='top';
-    ctx.fillText('click background to zoom out', W-10, 10);
+    ctx.fillText('click background to zoom out', W-12, 12);
   }
   if (LM.alpha>0.06&&!LM.paused) {
-    ctx.fillStyle='rgba(101,114,143,0.45)'; ctx.font='10px Outfit,sans-serif';
+    ctx.fillStyle='rgba(120,150,165,0.65)'; ctx.font='10px Georgia,serif';
     ctx.textAlign='left'; ctx.textBaseline='top';
-    ctx.fillText('• settling…', 10, 10);
+    ctx.fillText('• settling…', 12, 12);
   }
 }
 
