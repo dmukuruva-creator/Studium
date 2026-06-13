@@ -1780,6 +1780,14 @@ function contextText(text) {
   var est = Math.round(text.length / 4);
   if (est <= TOKEN_BUDGET) return text;
   var limit = TOKEN_BUDGET * 4;
+  // STU-4 — never truncate silently: surface a visible warning to the user with
+  // an estimate of how much was dropped (~1800 chars ≈ one page).
+  var omittedPages = Math.max(1, Math.round((text.length - limit) / 1800));
+  if (typeof toast === 'function') {
+    toast('Context truncated — ~' + omittedPages + ' page' + (omittedPages === 1 ? '' : 's')
+      + ' omitted (exceeds the ' + TOKEN_BUDGET.toLocaleString()
+      + '-token budget). Scope to a section for full coverage.');
+  }
   return text.slice(0, limit)
     + '\n\n[Content truncated: ~' + est.toLocaleString() + ' estimated tokens exceeds '
     + TOKEN_BUDGET.toLocaleString() + '-token budget. Select a specific section scope for full coverage.]';
@@ -2028,7 +2036,7 @@ async function _generateWeakTopicQs(N) {
   var items = _validateAndFixSections(await genStructured({
     sys: 'Generate exactly ' + count + ' quiz questions specifically targeting these weak topics: ' + topicStr + '. Reply ONLY with a valid JSON array:\n[{"question":"...","hint":"short nudge","answer":"model answer","topic":"one of the given topics","sourceSection":"exact section heading"}]' + topicConstraint,
     user: 'Study scope: ' + ctx.label + '\n\nStudy material:\n' + contextText(ctx.text),
-    max: Math.min(8000, Math.max(2000, count * 520)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation', stream: false,
+    max: Math.min(16000, Math.max(2000, count * 640)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation', stream: false,
     parse: function(raw) { return validItems(unwrapStructuredOutput(pj(raw)), ['question','answer'], ['hint','topic','sourceSection']); },
   })).slice(0, N);
   return items.map(function(q, i) {
@@ -4735,7 +4743,7 @@ async function startMockExam() {
     var items = await genStructured({
       sys: 'You are a rigorous exam writer. Generate exactly ' + size + ' exam questions drawn from the material. Vary difficulty — include multi-step problems with full worked solutions in the answer. No hints. Reply ONLY with a valid JSON array:\n[{"question":"...","answer":"full model answer with steps","topic":"subject area","sourceSection":"section heading","level":"recall|apply|analyze"}]' + bloomInstr,
       user: 'Study scope: ' + scopeLabel + '\n\nStudy material:\n' + contextText(scopeText),
-      max: Math.min(10000, Math.max(3000, size * 600)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation',
+      max: Math.min(16000, Math.max(3000, size * 640)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation',
       parse: function(raw) { return validItems(unwrapStructuredOutput(pj(raw)), ['question','answer'], ['topic','sourceSection','level']); },
     });
     S.mockExam = {
@@ -5743,7 +5751,7 @@ async function genQuiz() {
   var coverageHint = underCovered.length
     ? '\n\nThese sections have NOT been quizzed yet or are under-tested — prioritize them: ' + underCovered.map(function(t) { return '"' + t + '"'; }).join(', ') + '.'
     : '';
-  var qMax = Math.min(8000, Math.max(2400, count * 520));
+  var qMax = Math.min(16000, Math.max(2400, count * 640));
   // G2: Bloom-tiered question mix: ~50% recall, ~30% apply, ~20% analyze
   var bloomInstr = '\n\nTag each question with a "level" field: "recall" for definitions/facts, "apply" for using concepts in a new context or calculation, "analyze" for multi-step reasoning or comparing ideas. Aim for a mix: at least 1-2 "apply" or "analyze" questions per set. Multi-step problems should include intermediate steps in the answer.';
   var quizSys = _personaSys() + 'You are a rigorous academic tutor. Generate exactly ' + count + ' questions that test deep understanding. If a selected section is provided, focus questions on that primary section. Use dependency context only when a question needs earlier definitions, prerequisites, notation, or assumptions; do not ignore dependencies that are required to answer correctly. Use LaTeX delimiters for math when helpful, such as \\(...\\) for inline math and $$...$$ for display math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"question":"...","hint":"short nudge","answer":"model answer","topic":"subject area","sourceSection":"exact section heading","level":"recall|apply|analyze"}]' + weakHint + coverageHint + topicConstraint + bloomInstr;
@@ -5903,7 +5911,7 @@ async function practiceWeakTopic(topic) {
     var pwItems = await genStructured({
       sys: 'You are a rigorous academic tutor. Generate exactly ' + count + ' questions that specifically test deep understanding of the topic: "' + topic + '". Focus questions tightly on that topic. Use dependency context only when a question needs earlier definitions, prerequisites, notation, or assumptions. Use LaTeX delimiters for math when helpful, such as \\(...\\) for inline math and $$...$$ for display math. Reply ONLY with a valid JSON array. No prose, markdown, bullets, comments, or unescaped quotation marks inside values:\n[{"question":"...","hint":"short nudge","answer":"model answer","topic":"' + topic + '"}]',
       user: 'Study scope: ' + ctx.label + '\n\nStudy material:\n' + contextText(ctx.text),
-      max: Math.min(8000, Math.max(2000, count * 520)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation', stream: false,
+      max: Math.min(16000, Math.max(2000, count * 640)), temp: 0.7, schema: JSON_SCHEMAS.quizList, task: 'generation', stream: false,
       parse: function(raw) { return validItems(unwrapStructuredOutput(pj(raw)), ['question','answer'], ['hint','topic','sourceSection']); },
     });
     S.queue = _validateAndFixSections(pwItems).map(function(q, i) { return Object.assign({ id: Date.now()+i }, q); });
