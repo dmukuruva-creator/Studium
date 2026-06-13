@@ -4,6 +4,6 @@ DEEPTUTOR_SETUP.md
 .DS_Store
 .Rhistory
 
-# Python cache
+# Python cache — non-functional
 __pycache__/
 *.pyc

@@ -53,7 +53,9 @@ The `Studium.command` launcher and the macOS app installer automatically start t
 | File | Purpose |
 |------|---------|
 | `studium.html` | Standalone app (used by installer & `Studium.command`) |
-| `studium.jsx` | React version for Claude artifact / component hosts |
-| `studium_server.py` | Local HTTP server and macOS Keychain helper |
+| `studium_server.py` | Local HTTP server, macOS Keychain helper, and AI proxy |
 | `install_studium.sh` | Builds `Studium.app` in Applications |
 | `Studium.command` | Quick launcher from this folder |
+| `tests/` | `node tests/*.test.js` (parseJSON, cache, quant) + `python3 tests/test_server_security.py` (SSRF/body-cap) |
+| `TASK.md` | Current product direction (guided-session redesign) |
+| `docs/archive/` | Superseded design notes (kept for history) |
