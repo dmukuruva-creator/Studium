@@ -3,3 +3,7 @@ CRITIQUE.md
 DEEPTUTOR_SETUP.md
 .DS_Store
 .Rhistory
+
+# Python cache
+__pycache__/
+*.pyc
