@@ -35,6 +35,34 @@ Double-click **`Build Studium App.command`**. It bundles `studium.html` +
 to run. It's the app's "container": local-only (server binds `127.0.0.1`, keys stay in
 macOS Keychain, your Quant Prep files never leave the machine), no Docker, no daemon.
 
+## Set up on another computer
+
+Studium is self-contained — no install step, no database, no cloud account. To run
+it on a different Mac:
+
+1. **Copy the project folder** to the other Mac (AirDrop / USB / cloud sync), or
+   clone it:
+   ```bash
+   git clone https://github.com/dmukuruva-creator/Studium.git
+   cd Studium
+   ```
+2. **Make sure Python 3 is available.** Check with `python3 --version`. If it's
+   missing, install it from [python.org](https://www.python.org/downloads/) or with
+   Homebrew (`brew install python`). No other dependencies are needed — Studium uses
+   only the Python standard library.
+3. **Launch it** with any option above (double-click `Studium.command`, or
+   `Build Studium App.command` for a standalone app, or `python3 studium_server.py`).
+4. **Re-enter your API keys** in Settings on the new machine. Keys live in that Mac's
+   **Keychain** and are never copied with the project files, so they don't transfer —
+   paste them again (see [Use AI models](#use-ai-models) below).
+5. Your uploaded notes, flashcards, and concept maps are stored in the **browser** on
+   each machine (IndexedDB), so they also stay local and don't travel with the folder.
+
+> **Windows / Linux:** not currently supported. Studium stores API keys in macOS
+> Keychain through the `security` command, which only exists on macOS. The static
+> app and local server are otherwise plain Python, but key storage (and therefore the
+> AI features) won't work off macOS without code changes.
+
 ## Use AI models
 
 1. Open **Settings** (gear icon).
