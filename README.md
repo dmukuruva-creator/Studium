@@ -28,6 +28,13 @@ Then open [http://127.0.0.1:58743/studium.html](http://127.0.0.1:58743/studium.h
 
 This copies the app to `~/Applications/Studium.app`.
 
+**Option D — build a self-contained app right here (double-click)**
+
+Double-click **`Build Studium App.command`**. It bundles `studium.html` +
+`studium_server.py` into a single `Studium.app` *in this folder* — double-click that
+to run. It's the app's "container": local-only (server binds `127.0.0.1`, keys stay in
+macOS Keychain, your Quant Prep files never leave the machine), no Docker, no daemon.
+
 ## Use AI models
 
 1. Open **Settings** (gear icon).
@@ -54,8 +61,10 @@ The `Studium.command` launcher and the macOS app installer automatically start t
 |------|---------|
 | `studium.html` | Standalone app (used by installer & `Studium.command`) |
 | `studium_server.py` | Local HTTP server, macOS Keychain helper, and AI proxy |
-| `install_studium.sh` | Builds `Studium.app` in Applications |
+| `install_studium.sh` | Builds `Studium.app` (`--here` builds into this folder) |
+| `Build Studium App.command` | Double-click → self-contained `Studium.app` in this folder |
 | `Studium.command` | Quick launcher from this folder |
+| `HANDOFF.md` | Quant Drill audit, staged improvements & containerization notes |
 | `tests/` | `node tests/*.test.js` (parseJSON, cache, quant) + `python3 tests/test_server_security.py` (SSRF/body-cap) |
 | `TASK.md` | Current product direction (guided-session redesign) |
 | `docs/archive/` | Superseded design notes (kept for history) |

@@ -16,12 +16,68 @@ import socket
 import ssl
 import subprocess
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 HOST = "127.0.0.1"
 PORT = 58743
 ORIGIN = f"http://{HOST}:{PORT}"
 SERVICE = "Studium"
+
+# Recruiting-prep accountability tracker (26X). The Prep Assistant's "Log in your
+# 26X Tracker" button opens this via the OS default app. Single-user local app;
+# path is fixed (overridable by env) so there's no user-supplied input to inject.
+TRACKER_PATH = os.environ.get(
+    "STUDIUM_TRACKER",
+    os.path.expanduser("~/Desktop/Academics/Projects/26X-Planning/26X_Tracker.xlsx"),
+)
+
+# Root for resolving problem-bank files. Retrieval is driven by user input (the
+# browser sends ?file=<name-or-path>), not a baked-in personal path. The root
+# only bounds *where* those files may live: it defaults to the user's home
+# directory (portable across machines) and is overridable via the
+# STUDIUM_QUANT_PROBLEM_BANK env var. The user may supply a relative name, a
+# sub-path, or an absolute/~-path — but the resolved file must stay inside this
+# root, so this stays user-driven without becoming an arbitrary-file browser.
+QUANT_PROBLEM_BANK_DIR = os.environ.get(
+    "STUDIUM_QUANT_PROBLEM_BANK",
+    os.path.expanduser("~"),
+)
+QUANT_PROBLEM_BANK_DEFAULT = "problems.json"
+QUANT_PROBLEM_BANK_EXTS = {".json", ".jsonl", ".csv"}
+
+# Quant theme refresher (LaTeX). The Quant Drill reads this to know which themes
+# are already written up, and appends a stub when the user acknowledges a new one
+# they hit while drilling. Like TRACKER_PATH, the path is server-owned and fixed
+# (env-overridable) — the browser never supplies it, so there's no writable-path
+# injection surface; the only user input is the theme name/note text (escaped).
+QUANT_THEMES_PATH = os.environ.get(
+    "STUDIUM_QUANT_THEMES",
+    os.path.expanduser(
+        "~/Desktop/Academics/Academic Work/Quant Prep/Roadmaps & Guides/Quant_Themes.tex"
+    ),
+)
+
+
+def _latex_escape(s: str) -> str:
+    """Escape LaTeX specials so a user note can't break compilation or inject commands."""
+    repl = {
+        "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$",
+        "#": r"\#", "_": r"\_", "{": r"\{", "}": r"\}",
+        "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+    }
+    return "".join(repl.get(c, c) for c in s if c == "\n" or ord(c) >= 32)
+
+
+def _theme_stub(name: str, note: str, today: str) -> str:
+    """A compilable section stub matching the doc's Theme structure."""
+    body = _latex_escape(note) if note else r"\emph{To be completed.}"
+    return (
+        "\n% ===== Theme captured from Studium Quant Drill — " + today + " =====\n"
+        "\\section{Theme --- " + _latex_escape(name) + "}\n\n"
+        "\\textbf{Theme.} " + body + "\n\n"
+        "\\begin{keybox}[Key tool]\n\\emph{To be filled in.}\n\\end{keybox}\n\n"
+        "\\smallskip\n\\noindent\\textbf{Recognition cues.} \\emph{To be filled in.}\n\n"
+    )
 
 # Cap request bodies so an oversized upload can't exhaust memory (STU-1).
 MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -184,7 +240,154 @@ class StudiumHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/models/"):
             self._handle_models()
             return
+        if self.path.startswith("/quant/problem-bank"):
+            self._handle_quant_problem_bank()
+            return
+        if self.path == "/quant/themes":
+            self._handle_quant_themes_get()
+            return
+        if self.path == "/open-tracker":
+            # Open the 26X accountability tracker in the OS default app.
+            if not os.path.exists(TRACKER_PATH):
+                self._send_json(404, {"error": "tracker not found", "path": TRACKER_PATH})
+                return
+            try:
+                subprocess.Popen(["open", TRACKER_PATH])  # macOS; fixed path, no shell
+                self._send_json(200, {"ok": True, "path": TRACKER_PATH})
+            except Exception as e:  # noqa: BLE001
+                self._send_json(500, {"error": str(e)})
+            return
         return super().do_GET()
+
+    def _handle_quant_problem_bank(self):
+        """
+        GET /quant/problem-bank?file=<name | sub/path | /abs/path | ~/path>
+
+        Reads a JSON/JSONL/CSV problem bank chosen by the user. The file may be
+        given as a name/sub-path (resolved against QUANT_PROBLEM_BANK_DIR) or as
+        an absolute/~-path; either way the resolved file must stay inside the
+        configured root, so no arbitrary file outside it can be read.
+        """
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        raw = (qs.get("file") or [QUANT_PROBLEM_BANK_DEFAULT])[0].strip()
+        if not raw:
+            self._send_json(400, {"error": "Invalid problem-bank file"})
+            return
+
+        root = os.path.abspath(os.path.expanduser(QUANT_PROBLEM_BANK_DIR))
+        expanded = os.path.expanduser(raw)
+        if os.path.isabs(expanded):
+            # User supplied a full path (e.g. pasted from Finder).
+            target = os.path.abspath(expanded)
+        else:
+            rel = raw.replace("\\", "/").lstrip("/")
+            if ".." in rel.split("/"):
+                self._send_json(400, {"error": "Invalid problem-bank file"})
+                return
+            target = os.path.abspath(os.path.join(root, rel))
+
+        ext = os.path.splitext(target)[1].lower()
+        if ext not in QUANT_PROBLEM_BANK_EXTS:
+            self._send_json(400, {"error": "Unsupported problem-bank file type"})
+            return
+
+        try:
+            if os.path.commonpath([root, target]) != root:
+                self._send_json(400, {"error": "Problem-bank file must be inside " + root})
+                return
+        except ValueError:
+            self._send_json(400, {"error": "Invalid problem-bank file"})
+            return
+
+        if not os.path.exists(target) or not os.path.isfile(target):
+            self._send_json(404, {"error": "Problem-bank file not found", "path": target})
+            return
+        if os.path.getsize(target) > MAX_BODY_BYTES:
+            self._send_json(413, {"error": "Problem-bank file is too large"})
+            return
+
+        try:
+            with open(target, "r", encoding="utf-8-sig") as fh:
+                text = fh.read()
+            self._send_json(200, {
+                "ok": True,
+                "name": os.path.basename(target),
+                "path": target,
+                "text": text,
+            })
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_quant_themes_get(self):
+        """GET /quant/themes — return the theme refresher's text so the drill can
+        tell which themes are already written up. Missing file is not an error."""
+        path = QUANT_THEMES_PATH
+        if not os.path.exists(path) or not os.path.isfile(path):
+            self._send_json(200, {"ok": True, "exists": False, "path": path, "text": ""})
+            return
+        if os.path.getsize(path) > MAX_BODY_BYTES:
+            self._send_json(413, {"error": "Themes file is too large"})
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
+            self._send_json(200, {"ok": True, "exists": True, "path": path, "text": text})
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": str(exc)})
+
+    def _handle_quant_themes_post(self):
+        """POST /quant/themes {name, note} — insert a theme stub before
+        \\end{document}. Only the name/note text is user-supplied (escaped); the
+        file path is server-owned."""
+        import datetime
+        raw = self._read_body_capped()
+        if raw is None:
+            return  # 413 already sent
+        try:
+            payload = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            self._send_json(400, {"error": "Invalid JSON"})
+            return
+        name = (payload.get("name") or "").strip()
+        note = (payload.get("note") or "").strip()
+        if not name:
+            self._send_json(400, {"error": "Missing theme name"})
+            return
+        if len(name) > 120 or len(note) > 1000:
+            self._send_json(400, {"error": "Theme name or note too long"})
+            return
+
+        path = QUANT_THEMES_PATH
+        if not os.path.exists(path) or not os.path.isfile(path):
+            self._send_json(404, {"error": "Themes file not found", "path": path})
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": str(exc)})
+            return
+
+        # Already written up (full-phrase match, same rule the client uses).
+        if name.lower() in text.lower():
+            self._send_json(200, {"ok": True, "added": False, "reason": "already present"})
+            return
+
+        marker = "\\end{document}"
+        idx = text.rfind(marker)
+        if idx < 0:
+            self._send_json(422, {"error": "Themes file has no \\end{document} to insert before"})
+            return
+        stub = _theme_stub(name, note, datetime.date.today().isoformat())
+        new_text = text[:idx] + stub + text[idx:]
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(new_text)
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "added": True, "path": path})
 
     def do_POST(self):
         if not self._check_origin():
@@ -192,6 +395,10 @@ class StudiumHandler(SimpleHTTPRequestHandler):
 
         if self.path.startswith("/proxy/"):
             self._handle_proxy()
+            return
+
+        if self.path == "/quant/themes":
+            self._handle_quant_themes_post()
             return
 
         if not self.path.startswith("/keychain/"):

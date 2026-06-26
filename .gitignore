@@ -7,3 +7,6 @@ DEEPTUTOR_SETUP.md
 # Python cache — non-functional
 __pycache__/
 *.pyc
+
+# Built app bundle — generated on demand by ./install_studium.sh / Build Studium App.command
+Studium.app/

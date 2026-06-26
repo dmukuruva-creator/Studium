@@ -317,8 +317,15 @@ const S = {
   confidence: null,        // per-question confidence: 'sure'|'unsure'|'guess'
   examExpandedIdx: null,   // index of expanded question row in exam report
   quant: null,             // active quant-drill session
-  quantBanks: [],          // [{id,name,items:[{q,a}],createdAt}]
+  quantBanks: [],          // [{id,name,items:[{q,a,id?,topic?,difficulty?,companies?,tracks?,reference?,source?}],createdAt}]
+  quantFilters: {},        // transient per-bank tag filter: {bankId:{difficulty,topic,firm,track}}
+  quantLog: [],            // capped per-session drill summaries [{ts,bank,scope,answered,correct,byTopic}] — powers the Prep Assistant
+  speedLog: [],            // capped speed/live-game scores [{ts,kind,val}] — Zetamac/80-in-8/Figgie; feeds the Prep Assistant
   quantImport: '',         // in-progress paste in the bank importer
+  quantBankFile: 'problems.json', // user-entered bank file/sub-path to retrieve from the Quant Prep folder
+  quantThemesText: null,   // cached Quant_Themes.tex contents (lazy-loaded; null = not yet fetched)
+  quantThemesKnown: [],    // theme section names parsed from the doc (display only)
+  quantThemeAcks: [],      // lowercased topic keys the user has noted/skipped — never re-prompt
   diag: null,              // last self-diagnostics result {running, ts, checks:[...]}
 };
 
@@ -557,6 +564,10 @@ async function loadState() {
   S.extractWarnings = lsGet('sd_extractWarnings') || [];
   S.coverage        = lsGet('sd_coverage')        || {};
   S.quantBanks      = lsGet('sd_quantbanks')      || [];
+  S.quantBankFile   = lsGet('sd_quantbankfile')   || 'problems.json';
+  S.quantLog        = lsGet('sd_quantlog')        || [];
+  S.quantThemeAcks  = lsGet('sd_quantthemeacks')  || [];
+  S.speedLog        = lsGet('sd_speedlog')        || [];
   var savedMeta = lsGet('sd_meta');
   if (savedMeta && typeof savedMeta === 'object') Object.assign(S.meta, savedMeta);
   S.analytics = normalizeAnalytics(lsGet('sd_analytics'));
@@ -2389,6 +2400,7 @@ var _katexOpts = {
   ],
   throwOnError: false,
   ignoredTags: ['script','noscript','style','textarea','pre','code','input','select'],
+  ignoredClasses: ['tex-literal'],   // literal $ emitted by _mathNormalize must not become a delimiter
   macros: {
     '\\R': '\\mathbb{R}',
     '\\N': '\\mathbb{N}',
@@ -2398,6 +2410,58 @@ var _katexOpts = {
     '\\d': '\\,\\mathrm{d}',
   },
 };
+
+// Normalize document-level LaTeX (textbook / Green-Book-style exports) into HTML
+// + inline-math that KaTeX auto-render can pick up. renderMathInElement only
+// typesets text inside $…$ / \(…\) delimiters, so bank content authored in full
+// LaTeX (\textbf{}, \par, \url, \$, bare \frac…) otherwise leaks as raw
+// backslash text. Run this on any untrusted/exported text before it goes into a
+// .math-rich node — it returns HTML-safe markup. Shared by the Quant Drill and
+// any other .math-rich consumer that may receive full LaTeX.
+function _mathNormalize(raw) {
+  if (raw == null) return '';
+  var s = String(raw);
+  var MO = String.fromCharCode(1), DOL = String.fromCharCode(2);   // collision-proof sentinels
+
+  // 1) Escaped dollar -> sentinel, so it is never mistaken for a math delimiter.
+  s = s.replace(/\\\$/g, DOL);
+
+  // 2) Protect already-delimited math so the HTML transforms below don't touch it.
+  var math = [];
+  s = s.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+?\$/g, function(m) {
+    return MO + (math.push(m) - 1) + MO;
+  });
+
+  // 3) Escape HTML in the remaining (non-math) text.
+  s = esc(s);
+
+  // 4) Document-level LaTeX -> HTML.
+  s = s.replace(/\\textbf\{([^{}]*)\}/g, '<strong>$1</strong>')
+       .replace(/\\(?:textit|emph)\{([^{}]*)\}/g, '<em>$1</em>')
+       .replace(/\\url[\{(]([^){}]+)[)\}]/g, function(_, u) {
+         var safe = u.trim();
+         return /^https?:\/\//i.test(safe)                       // scheme guard - no javascript:
+           ? '<a href="' + safe + '" target="_blank" rel="noopener" style="color:var(--acc)">' + safe + '</a>'
+           : safe;
+       })
+       .replace(/\\(?:small|large|normalsize|footnotesize|textnormal|textrm)\b/g, '')
+       .replace(/\\par\b\s*/g, '<br><br>')
+       .replace(/\\\\\s*/g, '<br>')          // LaTeX explicit line break
+       .replace(/\\%/g, '%')
+       .replace(/\\&amp;/g, '&amp;')          // \& (esc already turned & into &amp;)
+       .replace(/~/g, ' ');                   // LaTeX hard space
+
+  // 5) Wrap bare math (outside delimiters) so KaTeX picks it up. Negative
+  //    lookahead (not \b) so a digit right after the macro still counts
+  //    (e.g. \frac23) while a longer command name (\fraction) does not.
+  s = s.replace(/\\(?:frac|sqrt|sum|prod|int|binom|cdot|times|div|leq|geq|neq|approx|alpha|beta|gamma|delta|theta|lambda|mu|sigma|pi|infty)(?![a-zA-Z])(?:\{[^{}]*\}|\^\S|_\S|[0-9])*/g, function(m) {
+    return '\\(' + m + '\\)';
+  });
+
+  // 6) Restore protected math, then the literal dollar sign.
+  s = s.replace(new RegExp(MO + '(\\d+)' + MO, 'g'), function(_, i) { return math[+i]; });
+  return s.split(DOL).join('<span class="tex-literal">$</span>');
+}
 var _activeAbort = null;
 var _abortTimeout = null;
 var _showMoreIntents = false;
@@ -3995,7 +4059,23 @@ async function runDiagnostics() {
     gtest(gradeQuantAnswer({ a: '2491' }, '2491').correct === true);
     gtest(gradeQuantAnswer({ a: '1/6' }, '0.1667').correct === true);
     gtest(parseQuantBank('a | 1\nb | 2').length === 2);
+    // structured metadata is preserved (Quant Prep Problem Bank schema) and tag-filtering works
+    var _qm = parseQuantBank('[{"q":"x","a":"1","difficulty":"Hard","topic":"Probability","companies":["Jane Street"],"tracks":["trader"]}]');
+    gtest(_qm.length === 1 && _qm[0].difficulty === 'Hard' && _qm[0].companies[0] === 'Jane Street');
+    gtest(_itemMatchesFilter(_qm[0], { difficulty: 'Hard', firm: 'Jane Street' }) === true);
+    gtest(_itemMatchesFilter(_qm[0], { difficulty: 'Easy' }) === false);
+    gtest(parseQuantBank('[{"q":"x","a":"1"}]')[0].difficulty === undefined); // plain Q/A unchanged
     gtest(_interleaveByTopic([{ t: 'a' }, { t: 'a' }, { t: 'b' }], function (x) { return x.t; }).length === 3);
+    // prep schedule overlay: 12 strictly-ordered weeks; _prepToday returns a valid state
+    gtest(PREP_SCHEDULE.length === 12);
+    gtest((function () { for (var i = 1; i < PREP_SCHEDULE.length; i++) { if (_prepMs(PREP_SCHEDULE[i].start) <= _prepMs(PREP_SCHEDULE[i - 1].start)) return false; } return true; })());
+    gtest(['pre', 'active', 'post'].indexOf(_prepToday().state) >= 0);
+    // prep assistant: perf aggregation + assessment return well-formed shapes without throwing
+    gtest(typeof _prepPerf().sessions === 'number');
+    gtest(Array.isArray(_prepAssess().recs) && Array.isArray(_prepAssess().pivots));
+    // speed-gate targets ramp correctly; Figgie has no fixed target
+    gtest(_speedTarget('zetamac', 4) === 40 && _speedTarget('optiver', 6) === 56 && _speedTarget('figgie', 1) === null);
+    gtest(typeof _speedPerf() === 'object');
   } catch (e) { /* counted as failures below */ }
   add('Offline graders self-test', gp === gt ? 'ok' : 'bad', gp + '/' + gt + ' passing');
 
@@ -4226,6 +4306,36 @@ function _quantToNumber(s) {
   return pct ? n / 100 : n;
 }
 
+function _quantNumberCandidates(s) {
+  s = String(s == null ? '' : s);
+  var normalized = s
+    .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '$1/$2')
+    .replace(/\\%/g, '%')
+    .replace(/\$/g, ' ');
+  var zones = [];
+  var answerish = normalized.match(/(?:answer|ans\.?|therefore|thus|so|hence|fair price|break-even)[\s:.]*([\s\S]{0,220})/i);
+  if (answerish) zones.push(answerish[1]);
+  zones.push(normalized);
+  var seen = {}, out = [];
+  zones.forEach(function(zone) {
+    var re = /[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*\/\s*[-+]?\d+(?:,\d{3})*(?:\.\d+)?|[-+]?\d+(?:,\d{3})*(?:\.\d+)?%?/g;
+    var m;
+    while ((m = re.exec(zone))) {
+      var raw = m[0].replace(/\s+/g, '');
+      if (!seen[raw]) { seen[raw] = 1; out.push(raw); }
+    }
+  });
+  return out;
+}
+
+function _quantTextContainsAnswer(expected, answer) {
+  var a = _normalizeCloze(answer);
+  if (a.length < 2) return false;
+  var e = _normalizeCloze(expected);
+  if (a.length <= 3) return new RegExp('(^|\\s)' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)').test(e);
+  return e.indexOf(a) >= 0;
+}
+
 // Grade a quant answer. Integers require an exact match (arithmetic); answers
 // written with a decimal, fraction, or percent allow a small relative tolerance
 // (rounding). Falls back to normalized string match for word answers.
@@ -4239,7 +4349,69 @@ function gradeQuantAnswer(item, answer) {
       : (tolerant ? Math.abs(sn - en) / Math.abs(en) < 0.005 : Math.abs(sn - en) < 1e-9);
     return { correct: ok, expected: expected };
   }
-  return { correct: _normalizeCloze(answer) === _normalizeCloze(expected), expected: expected };
+  if (sn != null && en == null) {
+    var cands = _quantNumberCandidates(expected);
+    for (var i = 0; i < cands.length; i++) {
+      var cn = _quantToNumber(cands[i]);
+      if (cn == null) continue;
+      var tolerantCand = /[.\/%]/.test(cands[i]) || /[.\/%]/.test(String(answer));
+      var okCand = Math.abs(cn) < 1e-9
+        ? Math.abs(sn) < 1e-6
+        : (tolerantCand ? Math.abs(sn - cn) / Math.abs(cn) < 0.005 : Math.abs(sn - cn) < 1e-9);
+      if (okCand) return { correct: true, expected: expected, matched: cands[i] };
+    }
+  }
+  var exact = _normalizeCloze(answer) === _normalizeCloze(expected);
+  return { correct: exact || _quantTextContainsAnswer(expected, answer), expected: expected };
+}
+
+function _quantList(v) {
+  if (Array.isArray(v)) return v.map(function(s) { return String(s).trim(); }).filter(Boolean);
+  if (typeof v === 'string' && v.trim()) return v.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  return null;
+}
+
+function _quantItemFromObject(o) {
+  if (o == null || typeof o !== 'object') return null;
+  var q = o.q != null ? o.q : (o.question != null ? o.question : o.prompt);
+  var a = o.a != null ? o.a : (o.answer != null ? o.answer : o.solution);
+  if (q == null || a == null || String(a).trim() === '') return null;
+  var it = { q: String(q).trim(), a: String(a).trim() };
+  // Preserve structured metadata when present (Quant Prep Problem Bank schema)
+  // so banks can be filtered in-app by difficulty / topic / firm / track.
+  if (o.id != null) it.id = String(o.id).trim();
+  if (o.topic != null && String(o.topic).trim()) it.topic = String(o.topic).trim();
+  if (o.difficulty != null && String(o.difficulty).trim()) it.difficulty = String(o.difficulty).trim();
+  if (o.source != null && String(o.source).trim()) it.source = String(o.source).trim();
+  if (o.reference != null && String(o.reference).trim()) it.reference = String(o.reference).trim();
+  if (o.solution != null && String(o.solution).trim()) it.solution = String(o.solution).trim();
+  var comp = _quantList(o.companies); if (comp && comp.length) it.companies = comp;
+  var trk = _quantList(o.tracks); if (trk && trk.length) it.tracks = trk;
+  return it.q ? it : null;
+}
+
+function _parseQuantCsv(text) {
+  var rows = [], row = [], cell = '', quoted = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i], next = text[i + 1];
+    if (quoted) {
+      if (ch === '"' && next === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (ch !== '\r') cell += ch;
+  }
+  row.push(cell); rows.push(row);
+  if (!rows.length) return [];
+  var header = rows.shift().map(function(h) { return String(h || '').trim().toLowerCase(); });
+  if (header.indexOf('question') < 0 && header.indexOf('q') < 0) return [];
+  return rows.map(function(r) {
+    var o = {};
+    header.forEach(function(h, i) { o[h] = r[i] == null ? '' : r[i]; });
+    return _quantItemFromObject(o);
+  }).filter(Boolean);
 }
 
 // Parse a pasted bank into [{q,a}]. Accepts JSON, "Q:/A:" blocks, or lines
@@ -4252,15 +4424,22 @@ function parseQuantBank(text) {
     try {
       var arr = JSON.parse(text);
       if (!Array.isArray(arr)) arr = [arr];
-      var out = arr.map(function(o) {
-        if (o == null || typeof o !== 'object') return null;
-        var q = o.q != null ? o.q : (o.question != null ? o.question : o.prompt);
-        var a = o.a != null ? o.a : (o.answer != null ? o.answer : o.solution);
-        if (q == null || a == null) return null;
-        return { q: String(q).trim(), a: String(a).trim() };
-      }).filter(function(x) { return x && x.q && x.a !== ''; });
+      var out = arr.map(_quantItemFromObject).filter(Boolean);
       if (out.length) return out;
     } catch (e) { /* fall through */ }
+  }
+  if (/^\s*\{/.test(text) && /\n\s*\{/.test(text)) {
+    var jsonl = [];
+    text.split(/\r?\n/).forEach(function(line) {
+      line = line.trim();
+      if (!line) return;
+      try { var it = _quantItemFromObject(JSON.parse(line)); if (it) jsonl.push(it); } catch (e) {}
+    });
+    if (jsonl.length) return jsonl;
+  }
+  if (/^\s*(id|q|question|prompt)\s*,/i.test(text)) {
+    var csv = _parseQuantCsv(text);
+    if (csv.length) return csv;
   }
   if (/(^|\n)\s*Q[:.\)]/i.test(text) && /(^|\n)\s*A[:.\)]/i.test(text)) {
     var pairs = [], curQ = null;
@@ -4317,8 +4496,173 @@ function _fmtMMSS(sec) {
   return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
 }
 
+function _quantTopicHint(item) {
+  var topic = String((item && item.topic) || '').toLowerCase();
+  var src = String((item && item.source) || '').toLowerCase();
+  if (/bayes|conditional/.test(topic)) return 'Name the conditioning event first, then write numerator over total probability. Keep base rates visible.';
+  if (/expected|ev|lotus/.test(topic + ' ' + src)) return 'Look for linearity or tail-sum before doing casework. Define the random variable and compute expectation, not every outcome.';
+  if (/combin|count|permutation|paths/.test(topic)) return 'Count the unconstrained space and the constrained space with the same unit. If order matters in one, it must matter in both.';
+  if (/markov|state|random walk/.test(topic)) return 'Choose a small state variable, write first-step equations, and solve for the target state.';
+  if (/game|market|poker|bet/.test(topic)) return 'Compare expected values under each action. Work backward if later choices depend on earlier ones.';
+  if (/sequence|speed|iq/.test(topic + ' ' + src)) return 'Test simple differences, ratios, interleaving, powers, and letter positions before reaching for a complex pattern.';
+  if (/statistics|inference|normal|binomial/.test(topic)) return 'Identify the distribution and parameter first. Then choose exact, approximation, or conditioning.';
+  if (/option|greek|finance/.test(topic + ' ' + src)) return 'Translate the payoff into states, then reason with replication, no-arbitrage, or expected payoff under the stated measure.';
+  return 'Clarify what is being asked, name the unknown, and try a smaller version or symmetry before calculating.';
+}
+
+function _quantConfidenceLabel(v) {
+  return v === 'sure' ? 'Sure' : v === 'guess' ? 'Guess' : 'Unsure';
+}
+
+function _quantSkillScore(row) {
+  if (!row || !row.seen) return 100;
+  var acc = row.correct / row.seen;
+  var avgSec = row.avgSec || 0;
+  var unsureRate = row.unsure ? row.unsure / row.seen : 0;
+  var skipRate = row.skips ? row.skips / Math.max(1, row.seen + row.skips) : 0;
+  return Math.round(acc * 100 - Math.min(25, avgSec / 3) - unsureRate * 18 - skipRate * 12);
+}
+
+// Accuracy trajectory for one topic: later-half accuracy minus earlier-half, in
+// points. Positive = improving, negative = slipping. Needs ≥2 sessions and a
+// non-trivial sample so a single lucky/unlucky set can't masquerade as a trend.
+function _quantTrend(hist) {
+  if (!hist || hist.length < 2) return null;
+  var totSeen = hist.reduce(function (n, h) { return n + (h.seen || 0); }, 0);
+  if (totSeen < 6) return null;
+  var half = Math.floor(hist.length / 2);
+  var accOf = function (arr) {
+    var s = 0, c = 0;
+    arr.forEach(function (h) { s += h.seen || 0; c += h.correct || 0; });
+    return s ? c / s * 100 : null;
+  };
+  var early = accOf(hist.slice(0, half)), late = accOf(hist.slice(half));
+  if (early === null || late === null) return null;
+  return Math.round(late - early);
+}
+
+// Single study-priority score per topic = IMPACT (distance from interview-ready)
+// amplified by URGENCY (decay since last drill, a downward trend, and confident
+// misses — the costliest failure mode under interview pressure). Returns the
+// score, a one-line "why now", and an `urgent` flag for at-a-glance triage.
+function _quantPriority(row) {
+  if (!row || !row.seen) return { score: 0, reason: '', urgent: false };
+  var skill = (row.skill == null) ? 100 : row.skill;
+  var score = Math.max(0, 85 - skill); // impact: gap to interview-ready
+  var factors = [], urgent = false;
+  if (row.daysSince != null && row.daysSince >= 7) {
+    score += Math.min(30, (row.daysSince - 3) * 2);
+    factors.push('stale ' + row.daysSince + 'd');
+    urgent = true;
+  }
+  if (row.trend != null && row.trend <= -8) {
+    score += 18; factors.push('slipping ' + row.trend + ' pts'); urgent = true;
+  } else if (row.trend != null && row.trend >= 10) {
+    score = Math.max(0, score - 6); // improving — ease off
+  }
+  if (row.wrongSure) {
+    score += Math.min(24, row.wrongSure * 8);
+    factors.push(row.wrongSure + ' confident miss' + (row.wrongSure > 1 ? 'es' : ''));
+    urgent = true;
+  }
+  if ((row.acc != null && row.acc < 60) || skill < 55) urgent = true;
+  if (row.seen < 5) factors.push('thin sample');
+  return { score: Math.round(score), reason: factors.join(' · '), urgent: urgent };
+}
+
+// Distinct, drillable topic tags across every loaded bank (excludes the
+// catch-all buckets). This is the topic universe coverage is measured against.
+function _quantBankTopics() {
+  var set = {};
+  (S.quantBanks || []).forEach(function(b) {
+    (b.items || []).forEach(function(it) {
+      var t = (it && it.topic) ? String(it.topic).trim() : '';
+      if (t && t !== '(untagged)' && t !== '(mixed)') set[t] = 1;
+    });
+  });
+  return Object.keys(set).sort();
+}
+
+// Coverage gap: bank topics with zero reps. These are the true blind spots —
+// invisible in the accuracy table because no data exists for them yet.
+function _quantCoverage(topicRows, bankTopics) {
+  var drilled = {};
+  (topicRows || []).forEach(function(r) { if (r.seen > 0) drilled[r.topic] = 1; });
+  var untouched = (bankTopics || []).filter(function(t) { return !drilled[t]; });
+  return { untouched: untouched, drilled: Object.keys(drilled).length, total: (bankTopics || []).length };
+}
+
+// Targeted further reading for a topic, drawn from the student's own Quant Prep
+// library. Deterministic (no LLM call) so it can ride along in the dashboard.
+function _quantReadingFor(topic) {
+  var t = String(topic || '');
+  var map = [
+    { re: /count|combin|permut/i,                    text: 'Mosteller, "Fifty Challenging Problems in Probability"; Quant Club "Counting, Combinatorics, Probability"' },
+    { re: /bayes|condition/i,                          text: 'Blitzstein & Hwang, "Introduction to Probability" (Stat 110) ch.2; MIT 18.05 notes' },
+    { re: /markov|stochastic|random walk|state/i,      text: 'Norris, "Markov Chains" ch.1; "Stochastic Processes"' },
+    { re: /martingale|stopping|fair game/i,            text: 'Green Book (Zhou) ch.5 stochastic processes; "Stochastic Processes"' },
+    { re: /option|deriv|greek|volat|black.?scholes/i,  text: 'Hull, "Options, Futures and Other Derivatives" ch.9–19; Natenberg, "Option Pricing and Volatility"' },
+    { re: /market.?mak|adverse|fair price|quot/i,      text: 'Green Book (Zhou) ch.4; Jane Street "Probability & Markets" primer' },
+    { re: /game|nash|poker|bet/i,                       text: 'Prisner, "Game Theory Through Examples"; "The Mathematics of Poker"' },
+    { re: /dice/i,                                      text: '"A Collection of Dice Problems"' },
+    { re: /mental|speed|arith|estimat|guesstimat/i,     text: '"Secrets of Mental Math"; the bank\'s mental-math reference tables (Source 10)' },
+    { re: /statist|inference|normal|binom|distribut/i,  text: 'Blitzstein & Hwang ch.5–8; MIT 18.05 notes' },
+    { re: /sequence|pattern|iq/i,                       text: 'Joshi, "Quant Job Interview Questions and Answers"; "Heard on the Street"' },
+    { re: /expect|ev|brainteaser|interview|prob/i,      text: 'Zhou, "A Practical Guide to Quantitative Finance Interviews" (the Green Book) ch.2–3' },
+  ];
+  for (var i = 0; i < map.length; i++) if (map[i].re.test(t)) return map[i].text;
+  return '';
+}
+
+// Is this topic already written up anywhere in the themes doc? Full-phrase,
+// case-insensitive — the same rule the server uses to dedupe on insert.
+function _quantThemeCovered(topic, text) {
+  var t = String(topic || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (t.length < 3) return true; // too short to match reliably — don't nag
+  return String(text || '').toLowerCase().indexOf(t) >= 0;
+}
+
+// Bank topics not yet captured in the themes doc and not already acknowledged.
+function _quantNewThemes(bankTopics, text, acked) {
+  var ack = {};
+  (acked || []).forEach(function(k) { ack[String(k).toLowerCase()] = 1; });
+  return (bankTopics || []).filter(function(t) {
+    return !ack[String(t).toLowerCase()] && !_quantThemeCovered(t, text);
+  });
+}
+
+// Human theme names already present in the doc (\section{Theme N --- Name}),
+// for a "currently covers" display line. Skips the non-theme front/back matter.
+function _parseThemeNames(text) {
+  var out = [], re = /\\section\{([^}]*)\}/g, m;
+  while ((m = re.exec(String(text || '')))) {
+    var name = m[1].replace(/Theme\s+[IVXLCDM]+\s*-+\s*/i, '').replace(/\\[a-zA-Z]+/g, '').trim();
+    if (name && !/^(how to use|foundations|metacognition)/i.test(name)) out.push(name);
+  }
+  return out;
+}
+
 // ── Bank management ─────────────────────────────────────────────────────────
 function setQuantImport(v) { S.quantImport = v; }
+function setQuantBankFile(v) { S.quantBankFile = v; lsSet('sd_quantbankfile', v); }
+
+function _quantRawEntryCount(text) {
+  text = String(text || '').trim();
+  if (!text) return 0;
+  try {
+    if (text[0] === '[' || text[0] === '{') {
+      var parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed.length : 1;
+    }
+  } catch (e) {}
+  if (/^\s*\{/.test(text) && /\n\s*\{/.test(text)) {
+    return text.split(/\r?\n/).filter(function(line) { return line.trim(); }).length;
+  }
+  if (/^\s*(id|q|question|prompt)\s*,/i.test(text)) {
+    return Math.max(0, text.split(/\r?\n/).filter(function(line) { return line.trim(); }).length - 1);
+  }
+  return text.split(/\r?\n/).filter(function(line) { return line.trim(); }).length;
+}
 
 function importQuantBank() {
   var nameEl = document.getElementById('quant-bank-name');
@@ -4332,6 +4676,37 @@ function importQuantBank() {
   render();
 }
 
+async function importQuantProblemBank(file) {
+  // Retrieval is driven by user input, not a hardcoded filename: when no explicit
+  // file is passed (e.g. recommendation flows), read the bank-file field the user
+  // typed, falling back to the conventional default. The server still sandboxes
+  // this to the Quant Prep folder, so it stays a name/sub-path, never an arbitrary
+  // absolute path.
+  if (!file) {
+    var fileEl = document.getElementById('quant-bank-file');
+    file = (fileEl && fileEl.value.trim()) || 'problems.json';
+  }
+  try {
+    var res = await fetch('/quant/problem-bank?file=' + encodeURIComponent(file));
+    var data = await res.json();
+    if (!res.ok || !data.ok) throw new Error((data && data.error) || 'Could not read problem bank');
+    var items = parseQuantBank(data.text || '');
+    if (!items.length) throw new Error('No drillable question/answer pairs found in ' + (data.name || file));
+    var total = _quantRawEntryCount(data.text || '');
+    var skipped = Math.max(0, total - items.length);
+    var name = data.name === 'problems.json' ? 'Quant Prep Problem Bank' : 'Quant Prep · ' + data.name;
+    var existing = S.quantBanks.find(function(b) { return b.sourcePath === data.path; });
+    var bank = { id: existing ? existing.id : Date.now(), name: name, items: items, createdAt: existing ? existing.createdAt : Date.now(), updatedAt: Date.now(), sourcePath: data.path };
+    if (existing) S.quantBanks = S.quantBanks.map(function(b) { return b.id === existing.id ? bank : b; });
+    else S.quantBanks.push(bank);
+    saveQuantBanks();
+    toast((existing ? 'Refreshed' : 'Loaded') + ' ' + items.length + ' drillable item' + (items.length === 1 ? '' : 's') + (skipped ? ' (' + skipped + ' without answers skipped).' : '.'));
+    render();
+  } catch (e) {
+    toast('Problem Bank import failed: ' + ((e && e.message) || 'unknown error'));
+  }
+}
+
 function deleteQuantBank(id) {
   if (!confirm('Delete this bank?')) return;
   S.quantBanks = S.quantBanks.filter(function(b) { return b.id !== id; });
@@ -4339,19 +4714,471 @@ function deleteQuantBank(id) {
   render();
 }
 
+// ── Tag filtering (Quant Prep Problem Bank metadata) ────────────────────────
+// Facets supported when items carry structured metadata: difficulty · topic ·
+// firm (companies) · track (tracks). Plain Q/A banks have no metadata and show
+// no filter row, so nothing changes for them.
+var QUANT_FACETS = [
+  { key: 'difficulty', label: 'Difficulty', field: 'difficulty', list: false },
+  { key: 'topic',      label: 'Topic',      field: 'topic',      list: false },
+  { key: 'firm',       label: 'Firm',       field: 'companies',  list: true  },
+  { key: 'track',      label: 'Track',      field: 'tracks',     list: true  },
+];
+function _quantFacetValues(bank, facet) {
+  var set = {};
+  (bank.items || []).forEach(function(it) {
+    var v = it[facet.field];
+    if (facet.list) { (Array.isArray(v) ? v : []).forEach(function(x) { if (x) set[x] = 1; }); }
+    else if (v) set[v] = 1;
+  });
+  var vals = Object.keys(set);
+  if (facet.key === 'difficulty') { // natural order, not alphabetical
+    var ord = { Easy: 0, Medium: 1, Hard: 2 };
+    vals.sort(function(a, b) { return (ord[a] == null ? 9 : ord[a]) - (ord[b] == null ? 9 : ord[b]) || a.localeCompare(b); });
+  } else vals.sort(function(a, b) { return a.localeCompare(b); });
+  return vals;
+}
+function _bankHasMeta(bank) {
+  return QUANT_FACETS.some(function(f) { return _quantFacetValues(bank, f).length > 0; });
+}
+function _itemMatchesFilter(it, flt) {
+  if (!flt) return true;
+  if (flt.difficulty && it.difficulty !== flt.difficulty) return false;
+  if (flt.topic && it.topic !== flt.topic) return false;
+  if (flt.firm && !(Array.isArray(it.companies) && it.companies.indexOf(flt.firm) >= 0)) return false;
+  if (flt.track && !(Array.isArray(it.tracks) && it.tracks.indexOf(flt.track) >= 0)) return false;
+  return true;
+}
+function _filterBankItems(bank) {
+  var flt = (S.quantFilters || {})[bank.id];
+  if (!flt) return bank.items.slice();
+  return bank.items.filter(function(it) { return _itemMatchesFilter(it, flt); });
+}
+function setQuantFilter(bankId, key, val) {
+  S.quantFilters = S.quantFilters || {};
+  var flt = S.quantFilters[bankId] || (S.quantFilters[bankId] = {});
+  if (val) flt[key] = val; else delete flt[key];
+  render();
+}
+function clearQuantFilter(bankId) {
+  if (S.quantFilters) delete S.quantFilters[bankId];
+  render();
+}
+
+// ── Prep schedule (light chronological driver over the Quant Drill) ──────────
+// Maps the 12-week trader roadmap (Quant_Recruiting_Roadmap_26X) to bank drill
+// scopes, so opening the drill shows "what to do today" and one click drills
+// this week's focus. Read-only overlay — it reuses startQuantDrill + the tag
+// filter; it does NOT touch the drill/grading/FSRS engine.
+var PREP_SCHEDULE = [
+  { n: 1,  start: '2026-06-15', label: 'Probability Core & Expected Value',          topics: ['Probability', 'Expected Value'], res: 'Green Book ch.2–3 · Blitzstein–Hwang ch.1–4 · PB:Probability' },
+  { n: 2,  start: '2026-06-22', label: 'Combinatorics & Brainteasers',               topics: ['Combinatorics', 'Brainteaser'], res: 'Mosteller · Joshi (Quant Job Q&A) · PB:Combinatorics/Brainteaser' },
+  { n: 3,  start: '2026-06-29', label: 'Mental Math, Sequences & Estimation',        topics: ['Sequences'], res: 'Secrets of Mental Math · Zetamac + tradermath · Optiver 80-in-8 · PB:Sequences · Guesstimation' },
+  { n: 4,  start: '2026-07-06', label: 'Markov Chains, States & Python',             topics: ['Markov Chains'], res: 'Norris · PB:Markov · verify with Monte-Carlo' },
+  { n: 5,  start: '2026-07-13', label: 'Statistics & Inference',                     topics: ['Statistics'], res: 'MIT 18.05 · Blitzstein ch.5–8 · PB:Statistics' },
+  { n: 6,  start: '2026-07-20', label: 'Random Walks, Martingales & Game Theory',    topics: ['Game Theory', 'Market Making', 'Markov Chains'], res: 'PB:GameTheory/MM · Figgie · poker/betting EV' },
+  { n: 7,  start: '2026-07-27', label: 'Options, Greeks & Market-Making',            topics: ['Options', 'Market Making'], res: 'Natenberg · Hull ch.9–19 · PB:Options/MM' },
+  { n: 8,  start: '2026-08-03', label: 'Integration & Mixed Timed Sets',             topics: [], difficulty: 'Hard', res: 'PB mixed Hard (cross-source) · timed sets · PuzzledQuant' },
+  { n: 9,  start: '2026-08-10', label: 'Firm-Specific Prep + Apply',                 topics: [], firm: true, res: 'Glassdoor (your target firms) · PuzzledQuant firm tags · firm guides · IMC Prosperity guide' },
+  { n: 10, start: '2026-08-17', label: 'Mock Interviews ×3',                         topics: [], difficulty: 'Hard', res: 'Recorded mocks (peer/Pramp) · PuzzledQuant · weak-topic drills' },
+  { n: 11, start: '2026-08-24', label: 'Mocks + Application Push',                   topics: [], res: 'More mocks · submit remaining apps · mental-math maintenance' },
+  { n: 12, start: '2026-08-31', label: 'Superday Polish & Behavioral',              topics: [], res: 'Behavioral / "why this firm" · light mixed reps · rest before superdays' },
+];
+var PREP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _prepMs(s) { var p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+function _prepFmt(ms) { var d = new Date(ms); return d.getUTCDate() + ' ' + PREP_MONTHS[d.getUTCMonth()]; }
+function _prepRange(w) { var s = _prepMs(w.start); return _prepFmt(s) + ' – ' + _prepFmt(s + 6 * 864e5); }
+function _prepToday() {
+  var now = Date.now();
+  var first = _prepMs(PREP_SCHEDULE[0].start);
+  var lastEnd = _prepMs(PREP_SCHEDULE[PREP_SCHEDULE.length - 1].start) + 7 * 864e5;
+  if (now < first) return { state: 'pre', week: PREP_SCHEDULE[0] };
+  if (now >= lastEnd) return { state: 'post', week: null };
+  var cur = PREP_SCHEDULE[0];
+  for (var i = 0; i < PREP_SCHEDULE.length; i++) { if (now >= _prepMs(PREP_SCHEDULE[i].start)) cur = PREP_SCHEDULE[i]; }
+  return { state: 'active', week: cur };
+}
+// ── Speed & live-game logging (the metrics that gate trading rounds) ─────────
+var SPEED_TYPES = [
+  { key: 'zetamac', label: 'Zetamac /2min' },
+  { key: 'optiver', label: 'Optiver 80-in-8' },
+  { key: 'figgie',  label: 'Figgie (net)' },
+];
+function _speedTarget(kind, weekN) {
+  weekN = weekN || 1;
+  if (kind === 'zetamac') return weekN <= 1 ? 25 : weekN <= 2 ? 30 : weekN <= 3 ? 35 : 40;
+  if (kind === 'optiver') return weekN <= 2 ? 40 : weekN <= 3 ? 45 : weekN <= 5 ? 50 : 56;
+  return null; // Figgie: reps/recency, no fixed threshold
+}
+function logSpeedScore(kind, val) {
+  val = parseFloat(val);
+  if (!kind || !isFinite(val)) { toast('Enter a number to log.'); return; }
+  S.speedLog = S.speedLog || [];
+  S.speedLog.push({ ts: Date.now(), kind: kind, val: val });
+  if (S.speedLog.length > 300) S.speedLog = S.speedLog.slice(-300);
+  saveSpeedLog();
+  var lbl = (SPEED_TYPES.filter(function (s) { return s.key === kind; })[0] || {}).label || kind;
+  toast('Logged ' + lbl + ': ' + val + '.');
+  render();
+}
+function saveSpeedLog() { lsSet('sd_speedlog', S.speedLog); }
+function _speedPerf() {
+  var by = {};
+  (S.speedLog || []).forEach(function (e) {
+    var b = by[e.kind] || (by[e.kind] = { last: null, lastTs: 0, best: null, n: 0 });
+    b.n++;
+    if ((e.ts || 0) >= b.lastTs) { b.lastTs = e.ts || 0; b.last = e.val; }
+    if (b.best === null || e.val > b.best) b.best = e.val;
+  });
+  return by;
+}
+// Open the 26X accountability tracker (xlsx) via the local server.
+function openTracker() {
+  fetch('/open-tracker').then(function (r) { return r.json(); }).then(function (j) {
+    toast(j && j.ok ? 'Opened your 26X Tracker — log this week’s Zetamac, mocks, apps & energy.' : 'Open 26X_Tracker.xlsx manually (Projects/26X-Planning).');
+  }).catch(function () { toast('Open 26X_Tracker.xlsx manually in Projects/26X-Planning.'); });
+}
+// Aggregate drill performance per topic from S.quantLog (the assistant's analytics).
+function _prepPerf() {
+  var log = S.quantLog || [], byTopic = {}, lastTs = 0, totAns = 0, totCorr = 0;
+  log.forEach(function (s) {
+    lastTs = Math.max(lastTs, s.ts || 0);
+    totAns += s.answered || 0; totCorr += s.correct || 0;
+    var bt = s.byTopic || {};
+    Object.keys(bt).forEach(function (tp) {
+      var a = byTopic[tp] || (byTopic[tp] = { seen: 0, correct: 0 });
+      a.seen += bt[tp].seen || 0; a.correct += bt[tp].correct || 0;
+    });
+  });
+  var topics = {};
+  Object.keys(byTopic).forEach(function (tp) {
+    var a = byTopic[tp];
+    topics[tp] = { seen: a.seen, acc: a.seen ? Math.round(a.correct / a.seen * 100) : null };
+  });
+  return {
+    topics: topics, sessions: log.length,
+    daysSince: lastTs ? Math.floor((Date.now() - lastTs) / 864e5) : null,
+    overallAcc: totAns ? Math.round(totCorr / totAns * 100) : null,
+  };
+}
+
+function _quantAnalytics() {
+  var log = S.quantLog || [], topics = {}, diffs = {}, recent = [], total = { seen: 0, correct: 0, skips: 0, ms: 0, unsure: 0 };
+  log.forEach(function(s) {
+    recent.push(s);
+    var bt = s.byTopic || {};
+    Object.keys(bt).forEach(function(tp) {
+      var src = bt[tp], row = topics[tp] || (topics[tp] = { topic: tp, seen: 0, correct: 0, skips: 0, ms: 0, unsure: 0, wrongSure: 0, lastTs: 0, hist: [] });
+      row.seen += src.seen || 0;
+      row.correct += src.correct || 0;
+      row.skips += src.skips || 0;
+      row.ms += src.ms || Math.round((src.avgSec || 0) * 1000 * (src.seen || 0));
+      row.unsure += (src.unsure || 0) + (src.guess || 0);
+      row.wrongSure += src.wrongSure || 0;
+      row.lastTs = Math.max(row.lastTs || 0, s.ts || 0);
+      if (src.seen) row.hist.push({ ts: s.ts || 0, seen: src.seen, correct: src.correct || 0 });
+    });
+    var bd = s.byDifficulty || {};
+    Object.keys(bd).forEach(function(df) {
+      var src = bd[df], row = diffs[df] || (diffs[df] = { difficulty: df, seen: 0, correct: 0 });
+      row.seen += src.seen || 0; row.correct += src.correct || 0;
+    });
+  });
+  var now = Date.now();
+  var rows = Object.keys(topics).map(function(tp) {
+    var r = topics[tp];
+    r.acc = r.seen ? Math.round(r.correct / r.seen * 100) : null;
+    r.avgSec = r.seen ? Math.round((r.ms || 0) / r.seen / 100) / 10 : 0;
+    r.skill = _quantSkillScore(r);
+    r.daysSince = r.lastTs ? Math.floor((now - r.lastTs) / 864e5) : null;
+    r.trend = _quantTrend(r.hist);
+    var p = _quantPriority(r);
+    r.priority = p.score; r.priorityReason = p.reason; r.urgent = p.urgent;
+    total.seen += r.seen; total.correct += r.correct; total.skips += r.skips; total.ms += r.ms || 0; total.unsure += r.unsure || 0;
+    return r;
+  }).sort(function(a, b) { return b.priority - a.priority || a.skill - b.skill || b.seen - a.seen; });
+  total.acc = total.seen ? Math.round(total.correct / total.seen * 100) : null;
+  total.avgSec = total.seen ? Math.round(total.ms / total.seen / 100) / 10 : 0;
+  var urgentCount = rows.filter(function(r) { return r.urgent && r.topic !== '(untagged)'; }).length;
+  return { topics: rows, difficulty: diffs, total: total, sessions: log.length, recent: recent.slice(-8), urgentCount: urgentCount };
+}
+
+// Per-session aggregation for the end-of-drill summary: topic accuracy (skips
+// excluded) and confidence calibration (how many "Sure" answers were wrong).
+// Pure over the attempts log so it can be unit-tested and reused.
+function _quantSessionBreakdown(attempts) {
+  var topics = {}, sureWrong = 0, sureTotal = 0;
+  (attempts || []).forEach(function(a) {
+    if (a.skipped) return;
+    var tp = a.topic || '(untagged)';
+    var r = topics[tp] || (topics[tp] = { seen: 0, correct: 0 });
+    r.seen++; if (a.correct) r.correct++;
+    if (a.confidence === 'sure') { sureTotal++; if (!a.correct) sureWrong++; }
+  });
+  return { topics: topics, sureWrong: sureWrong, sureTotal: sureTotal };
+}
+
+function _quantRecommendation() {
+  var a = _quantAnalytics(), topics = a.topics.filter(function(r) { return r.topic !== '(untagged)' && r.seen >= 3; });
+  if (!S.quantBanks.length) return { kind: 'import', label: 'Load the Quant Prep Problem Bank', detail: 'Start by importing problems.json so recommendations can use topic metadata.' };
+  if (!a.sessions) return { kind: 'baseline', label: 'Run a 5-minute mixed baseline', detail: 'Get a first read on accuracy, pace, and confidence across topics.', difficulty: 'Hard' };
+  if (topics.length) {
+    // topics[] is already priority-ranked (impact × urgency); top is the single
+    // most worth-doing thing now. Lead with the costliest failure modes.
+    var top = topics[0];
+    // Overconfidence — "sure but wrong" is the most dangerous pattern in a live
+    // interview, so fix it before chasing raw accuracy.
+    if (top.wrongSure >= 2) return {
+      kind: 'calibration', topic: top.topic, label: 'Fix overconfidence in ' + top.topic,
+      detail: top.wrongSure + ' answers you were sure of were wrong (now ' + top.acc + '%). Slow down on ' + top.topic + ' and verify before committing.',
+    };
+    // Weak or actively slipping — repair before it compounds.
+    if (top.skill < 72 || top.acc < 75 || (top.trend != null && top.trend <= -8)) return {
+      kind: 'topic', topic: top.topic, label: 'Repair ' + top.topic,
+      detail: top.acc + '% accuracy, ' + top.avgSec + 's avg, skill ' + top.skill
+        + (top.trend != null && top.trend <= -8 ? ', slipping ' + top.trend + ' pts' : '') + '. Learn mode first, then a timed sprint.',
+    };
+    // Strong but decaying — refresh it before the gain rots.
+    var stale = topics.filter(function(r) { return r.daysSince != null && r.daysSince >= 7 && r.acc != null && r.acc >= 75; })
+      .sort(function(x, y) { return y.daysSince - x.daysSince; })[0];
+    if (stale) return {
+      kind: 'decay', topic: stale.topic, label: 'Refresh ' + stale.topic,
+      detail: stale.topic + ' was solid (' + stale.acc + '%) but you have not drilled it in ' + stale.daysSince + ' days. A quick timed set keeps it from decaying.',
+    };
+  }
+  // Coverage gap — a core bank topic you've never touched is a blind spot the
+  // accuracy table can't show. Get a baseline before chasing harder reps.
+  var cov = _quantCoverage(a.topics, _quantBankTopics());
+  if (cov.untouched.length) {
+    var u = cov.untouched[0];
+    return {
+      kind: 'coverage', topic: u, label: 'Cover ' + u,
+      detail: u + ' is in your bank but you have never drilled it (' + cov.untouched.length + ' topic'
+        + (cov.untouched.length === 1 ? '' : 's') + ' untouched). Run a Learn-mode set to get a baseline.',
+    };
+  }
+  var hard = (a.difficulty.Hard || a.difficulty.hard || null);
+  if (!hard || hard.seen < 20 || (hard.seen && hard.correct / hard.seen < 0.7)) return {
+    kind: 'difficulty', difficulty: 'Hard', label: 'Add Hard mixed reps',
+    detail: 'Your base is stabilizing. Move up to harder cross-topic interview questions.',
+  };
+  return { kind: 'maintenance', label: 'Do a cold mixed sprint', detail: 'You are in maintenance territory. Keep speed and recall fresh.' };
+}
+
+function startQuantRecommended() {
+  var rec = _quantRecommendation();
+  if (rec.kind === 'import') { importQuantProblemBank(); return; }
+  var bank = S.quantBanks.slice().sort(function(a, b) { return b.items.length - a.items.length; })[0];
+  if (!bank) { toast('Load a quant bank first.'); return; }
+  S.quantFilters = S.quantFilters || {};
+  var flt = {};
+  if (rec.topic) flt.topic = rec.topic;
+  if (rec.difficulty) flt.difficulty = rec.difficulty;
+  S.quantFilters[bank.id] = flt;
+  // Repair, overconfidence, and a first-time coverage baseline all want slow,
+  // verify-first Learn mode; everything else is a timed sprint.
+  var slow = (rec.kind === 'topic' || rec.kind === 'calibration' || rec.kind === 'coverage');
+  startQuantDrill(bank.id, slow ? 'learn' : 'timed', slow ? 0 : 300);
+}
+
+function startQuantWeakTopic(topic) {
+  var bank = S.quantBanks.slice().sort(function(a, b) { return b.items.length - a.items.length; })[0];
+  if (!bank) { toast('Load a quant bank first.'); return; }
+  S.quantFilters = S.quantFilters || {};
+  S.quantFilters[bank.id] = { topic: topic };
+  startQuantDrill(bank.id, 'learn');
+}
+
+// ── Theme capture (Quant_Themes.tex) ─────────────────────────────────────────
+// Lazy-load the theme refresher once so the drill knows which themes are already
+// written up; when a bank introduces a theme that isn't, prompt the user to note
+// it down. Server-owned path — the client only sends the theme name/note text.
+var _quantThemesLoading = false;
+function loadQuantThemes() {
+  if (_quantThemesLoading) return;
+  _quantThemesLoading = true;
+  fetch('/quant/themes').then(function(r) { return r.json(); }).then(function(j) {
+    S.quantThemesText = (j && typeof j.text === 'string') ? j.text : '';
+    S.quantThemesKnown = _parseThemeNames(S.quantThemesText);
+    _quantThemesLoading = false;
+    render();
+  }).catch(function() { S.quantThemesText = ''; _quantThemesLoading = false; });
+}
+function dismissQuantTheme(topic) {
+  S.quantThemeAcks = S.quantThemeAcks || [];
+  var k = String(topic || '').toLowerCase();
+  if (S.quantThemeAcks.indexOf(k) < 0) S.quantThemeAcks.push(k);
+  lsSet('sd_quantthemeacks', S.quantThemeAcks);
+  render();
+}
+function noteQuantTheme(topic) {
+  var el = document.getElementById('quant-theme-note');
+  var note = (el && el.value.trim()) || '';
+  fetch('/quant/themes', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: topic, note: note }),
+  }).then(function(r) { return r.json(); }).then(function(j) {
+    if (j && j.ok) {
+      toast(j.added ? 'Noted “' + topic + '” in Quant_Themes.tex.' : '“' + topic + '” is already in the doc.');
+      S.quantThemesText = null;   // force a reload so it now counts as covered
+      dismissQuantTheme(topic);   // also ack locally so it won't re-prompt
+      loadQuantThemes();
+    } else {
+      toast((j && j.error) || 'Could not update the themes doc.');
+    }
+  }).catch(function() { toast('Themes doc unreachable — is the local server running?'); });
+}
+// Prompt card for the first not-yet-captured theme in the loaded banks.
+function renderQuantNewTheme() {
+  if (!S.quantBanks.length) return '';
+  if (S.quantThemesText == null) { loadQuantThemes(); return ''; }   // lazy first load
+  var news = _quantNewThemes(_quantBankTopics(), S.quantThemesText, S.quantThemeAcks);
+  if (!news.length) return '';
+  var t = news[0], arg = esc(JSON.stringify(t)), reading = _quantReadingFor(t);
+  return '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--acc)">'
+    + '<p class="sh" style="margin-bottom:6px">New theme in your bank</p>'
+    + '<p style="font-family:var(--sans);font-size:13px;color:var(--tx);line-height:1.55">'
+    + '<b style="color:var(--acc)">' + esc(t) + '</b> shows up in your problem bank but isn’t in your '
+    + '<code>Quant_Themes.tex</code> refresher'
+    + (news.length > 1 ? ' <span style="color:var(--mut)">(+' + (news.length - 1) + ' more after this)</span>' : '') + '.</p>'
+    + (reading ? '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5">📖 ' + esc(reading) + '</p>' : '')
+    + '<input class="inp" id="quant-theme-note" placeholder="One-line note: the trigger/cue that signals this theme (optional)" style="margin:10px 0 8px;font-size:12.5px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();noteQuantTheme(' + arg + ');}">'
+    + '<div class="row" style="gap:8px">'
+    + '<button class="btn bp btn-sm" onclick="noteQuantTheme(' + arg + ')">Note it down →</button>'
+    + '<button class="btn bg btn-sm" onclick="dismissQuantTheme(' + arg + ')">Skip</button>'
+    + '</div></div>';
+}
+// Turn schedule position + drill performance into recommendations and pivots.
+function _prepAssess() {
+  var t = _prepToday(), w = t.week, perf = _prepPerf(), recs = [], pivots = [];
+  if (perf.sessions === 0) recs.push('No drills logged yet — import your problems.json bank below, then “Drill this week’s focus” to start tracking.');
+  else if (perf.daysSince !== null && perf.daysSince >= 2) pivots.push('No drill in ' + perf.daysSince + ' days — momentum matters; run a quick set today.');
+  var weak = Object.keys(perf.topics).map(function (tp) { return { tp: tp, acc: perf.topics[tp].acc, n: perf.topics[tp].seen }; })
+    .filter(function (x) { return x.acc !== null && x.n >= 10 && x.acc < 65 && x.tp !== '(untagged)'; }).sort(function (a, b) { return a.acc - b.acc; });
+  if (weak.length) pivots.push('Persistent weak spot' + (weak.length > 1 ? 's' : '') + ': ' + weak.slice(0, 2).map(function (x) { return x.tp + ' (' + x.acc + '%)'; }).join(', ') + ' — schedule extra reps.');
+  if (w && (w.topics || []).length) {
+    var wt = w.topics.map(function (tp) { return { tp: tp, p: perf.topics[tp] }; });
+    if (wt.every(function (x) { return !x.p || x.p.seen < 8; })) recs.push('Haven’t drilled this week’s focus yet — start with “Drill this week’s focus”.');
+    wt.forEach(function (x) {
+      if (x.p && x.p.seen >= 8) {
+        if (x.p.acc < 65) pivots.push(x.tp + ' is at ' + x.p.acc + '% (' + x.p.seen + ' reps) — spend another session before advancing.');
+        else if (x.p.acc >= 85) recs.push(x.tp + ' is solid (' + x.p.acc + '%) — add Hard reps or move ahead.');
+      }
+    });
+  }
+  // speed & live-game gates (the bank doesn't train these)
+  var sp = _speedPerf(), weekN = (t.week && t.week.n) || 1;
+  ['zetamac', 'optiver'].forEach(function (k) {
+    var b = sp[k], tgt = _speedTarget(k, weekN), lbl = (SPEED_TYPES.filter(function (s) { return s.key === k; })[0] || {}).label;
+    if (b && tgt !== null && b.last < tgt) pivots.push(lbl + ' at ' + b.last + ' (target ' + tgt + ') — add timed speed rounds; pace gates trading OAs.');
+  });
+  var spTs = Object.keys(sp).reduce(function (m, k) { return Math.max(m, sp[k].lastTs); }, 0);
+  if (t.state === 'active') {
+    if (w.n <= 8) recs.push('Build phase: apply to firms in parallel now (rolling, Summer 2027) — don’t wait for Week 9.');
+    else recs.push('Application/mock phase: prioritise firm-filtered drills + one recorded mock; keep speed warm.');
+    if (!spTs) recs.push('Log a speed score (Zetamac / 80-in-8) — pace is a hard gate the bank can’t train.');
+    else if (Math.floor((Date.now() - spTs) / 864e5) >= 2) pivots.push('No speed score in ' + Math.floor((Date.now() - spTs) / 864e5) + ' days — run a timed round and log it.');
+    var fg = sp['figgie'];
+    if (!fg || (Date.now() - fg.lastTs) / 864e5 >= 3) recs.push('Play a Figgie round (live market-making reps) and log the net.');
+    if (new Date().getDay() === 6) recs.unshift('Checkpoint day — run a cold mixed drill (no notes) to test the week.');
+    if (new Date().getDay() === 1) pivots.unshift('Monday review — log last week in your 26X Tracker (Zetamac · mocks · apps · energy) and check the dashboard.');
+  }
+  return { recs: recs, pivots: pivots, perf: perf };
+}
+function renderPrepToday() {
+  var t = _prepToday();
+  var chip = function (txt, col) {
+    return '<span style="font-family:var(--sans);font-size:11px;font-weight:600;color:' + (col || 'var(--acc)')
+      + ';background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:2px 9px">' + esc(txt) + '</span>';
+  };
+  var daily = '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin-top:11px;line-height:1.6">'
+    + '<b style="color:var(--tx)">Every day:</b> Zetamac + a Figgie / trader-math speed round · one fresh firm-tagged question (PuzzledQuant / Glassdoor) · this week’s drill below.</p>';
+  var wrap = function (inner) { return '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--acc)">' + inner + '</div>'; };
+  var resLine = function (res) { return res ? '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin:2px 0 10px;line-height:1.55"><b style="color:var(--tx)">Use this week:</b> ' + esc(res) + '</p>' : ''; };
+  var assess = function () {
+    var a = _prepAssess(), out = '';
+    out += a.pivots.slice(0, 3).map(function (p) { return '<p style="font-family:var(--sans);font-size:12.5px;color:#d05555;margin:3px 0;line-height:1.5">⚠ ' + esc(p) + '</p>'; }).join('');
+    out += a.recs.slice(0, 3).map(function (r) { return '<p style="font-family:var(--sans);font-size:12.5px;color:var(--tx);margin:3px 0;line-height:1.5">→ ' + esc(r) + '</p>'; }).join('');
+    var pf = a.perf, foot = '';
+    if (pf.sessions) foot = '<p style="font-family:var(--sans);font-size:10.5px;color:var(--dim);margin-top:8px">Tracking: ' + pf.sessions + ' drill' + (pf.sessions === 1 ? '' : 's')
+      + (pf.overallAcc !== null ? ' · ' + pf.overallAcc + '% overall' : '') + (pf.daysSince !== null ? ' · last ' + pf.daysSince + 'd ago' : '') + '</p>';
+    if (!out && !foot) return '';
+    return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--brd)">'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Assistant</p>' + out + foot + '</div>';
+  };
+  var speedPanel = function () {
+    var sp = _speedPerf(), wk = (t.week && t.week.n) || 1;
+    var bits = SPEED_TYPES.map(function (s) {
+      var b = sp[s.key], tgt = _speedTarget(s.key, wk), nm = s.label.split(' ')[0];
+      if (!b) return nm + ': <span style="color:var(--dim)">—</span>';
+      var col = (tgt !== null) ? (b.last >= tgt ? '#49c47e' : '#d05555') : 'var(--tx)';
+      return nm + ': <span style="color:' + col + ';font-weight:700">' + b.last + (tgt !== null ? '<span style="color:var(--dim);font-weight:400">/' + tgt + '</span>' : '') + '</span>';
+    }).join(' &nbsp;·&nbsp; ');
+    var opts = SPEED_TYPES.map(function (s) { return '<option value="' + s.key + '">' + esc(s.label) + '</option>'; }).join('');
+    return '<div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--brd)">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:7px"><b style="color:var(--tx)">Speed &amp; live game</b> &nbsp; ' + bits + '</p>'
+      + '<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">'
+      + '<select class="inp" id="speed-kind" style="width:auto;height:30px;padding:2px 8px;font-size:12px">' + opts + '</select>'
+      + '<input class="inp" id="speed-val" type="number" placeholder="score" style="width:78px;height:30px;padding:2px 8px;font-size:12px">'
+      + '<button class="btn bg btn-sm" style="padding:4px 11px" onclick="logSpeedScore(document.getElementById(\'speed-kind\').value, document.getElementById(\'speed-val\').value)">Log</button>'
+      + '<button class="btn bg btn-sm" style="padding:4px 11px;color:var(--acc);border-color:var(--acc-b)" onclick="openTracker()">Log in 26X Tracker ↗</button>'
+      + '</div></div>';
+  };
+  if (t.state === 'pre')
+    return wrap('<p class="sh" style="margin-bottom:6px">Prep plan</p><p style="font-family:var(--sans);font-size:13px;color:var(--tx)">Program starts <b>15 Jun 2026</b> — Week 1: ' + esc(PREP_SCHEDULE[0].label) + '. Warm up with mental-math + Figgie until then.</p>' + resLine(PREP_SCHEDULE[0].res) + speedPanel() + assess() + daily);
+  if (t.state === 'post')
+    return wrap('<p class="sh" style="margin-bottom:6px">Prep plan — maintenance</p><p style="font-family:var(--sans);font-size:13px;color:var(--tx)">12-week plan complete. Keep mixed <b>Hard</b> drills + daily speed + fresh questions warm for superdays.</p>'
+      + '<div class="row" style="gap:8px;margin:10px 0"><button class="btn bp btn-sm" onclick="startPrepDrill()">Drill mixed Hard →</button></div>' + speedPanel() + assess() + daily);
+  var w = t.week;
+  var chips = (w.topics || []).map(function (x) { return chip(x); }).join(' ');
+  if (w.difficulty) chips += ' ' + chip(w.difficulty + ' · mixed', 'var(--gold)');
+  if (w.firm) chips += ' ' + chip('filter by target firm', 'var(--mut)');
+  return wrap(
+    '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">Today’s prep — Week ' + w.n + ' of 12</p>'
+    + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut)">' + esc(_prepRange(w)) + '</span></div>'
+    + '<p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx);margin-bottom:9px">' + esc(w.label) + '</p>'
+    + (chips ? '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:9px">' + chips + '</div>' : '')
+    + resLine(w.res)
+    + '<button class="btn bp btn-sm" onclick="startPrepDrill()">Drill this week’s focus →</button>'
+    + speedPanel()
+    + assess()
+    + daily);
+}
+// Launch a drill scoped to this week's roadmap focus, reusing the tag filter.
+function startPrepDrill() {
+  if (!S.quantBanks.length) { toast('Import your problems.json bank below first — then this drills exactly this week’s focus.'); render(); return; }
+  var bank = S.quantBanks.slice().sort(function (a, b) { return b.items.length - a.items.length; })[0];
+  var t = _prepToday(), w = t.week, flt = {};
+  if (w) {
+    if (w.difficulty) flt.difficulty = w.difficulty;
+    var topicsInBank = _quantFacetValues(bank, { field: 'topic', list: false, key: 'topic' });
+    var pick = (w.topics || []).filter(function (x) { return topicsInBank.indexOf(x) >= 0; });
+    if (pick.length) flt.topic = pick[0];
+  }
+  S.quantFilters = S.quantFilters || {};
+  S.quantFilters[bank.id] = flt;
+  if (!Object.keys(flt).length) toast('No matching tag for this week in “' + bank.name + '” — drilling the full bank. Use the filter row to narrow.');
+  startQuantDrill(bank.id, 'practice');
+}
+
 // ── Session ───────────────────────────────────────────────────────────────
 function startQuantDrill(bankId, mode, durationSec) {
   var bank = S.quantBanks.find(function(b) { return b.id === bankId; });
   if (!bank || !bank.items.length) { toast('That bank is empty.'); return; }
+  var items = _filterBankItems(bank);
+  if (!items.length) { toast('No items match the current filter. Clear it or widen the selection.'); return; }
   if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
+  var m = mode === 'timed' ? 'timed' : mode === 'learn' ? 'learn' : 'practice';
   S.quant = {
     active: true, finished: false,
     bankId: bankId, bankName: bank.name,
-    items: bank.items.slice(),
+    items: items.slice(),
     idx: 0, stats: {}, answered: 0, correct: 0, streakCur: 0, streakBest: 0,
-    missed: {}, showResult: false, lastResult: null, lastGiven: '',
-    mode: mode === 'timed' ? 'timed' : 'practice',
+    skipped: 0, attempts: [],
+    missed: {}, showResult: false, lastResult: null, lastGiven: '', confidence: 'unsure', lastConfidence: 'unsure', aiExplain: null, showHint: false,
+    mode: m,
     startTime: Date.now(),
+    itemStartedAt: Date.now(),
     endTime: mode === 'timed' ? Date.now() + (durationSec || 120) * 1000 : null,
   };
   if (S.quant.mode === 'timed') _quantTimer = setInterval(_quantTick, 250);
@@ -4372,21 +5199,37 @@ function quantSubmit() {
   var inp = document.getElementById('quant-input');
   var val = inp ? inp.value.trim() : '';
   if (!val) return;
+  var confidence = sess.confidence || 'unsure';
+  sess.confidence = 'unsure'; // reset to the default for the next question
   var item = sess.items[sess.idx];
   var res = gradeQuantAnswer(item, val);
   var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
+  var ms = Math.max(0, Date.now() - (sess.itemStartedAt || Date.now()));
   st.seen++;
+  st.totalMs = (st.totalMs || 0) + ms;
+  st.conf = st.conf || { sure: 0, unsure: 0, guess: 0 };
+  st.conf[confidence] = (st.conf[confidence] || 0) + 1;
   sess.answered++;
+  sess.attempts.push({
+    idx: sess.idx, id: item.id || '', topic: item.topic || '(untagged)', difficulty: item.difficulty || '',
+    correct: !!res.correct, skipped: false, ms: ms, confidence: confidence, answer: val,
+  });
   if (res.correct) {
+    st.correct = (st.correct || 0) + 1; // explicit correct count (skips must not count as correct)
     sess.correct++; st.streak++; sess.streakCur++;
     if (sess.streakCur > sess.streakBest) sess.streakBest = sess.streakCur;
-    // Rapid flow: a correct answer advances immediately.
-    sess.idx = _quantPickNext(sess);
-    sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+    if (sess.mode === 'learn') {
+      sess.showResult = true; sess.lastResult = res; sess.lastGiven = val; sess.lastConfidence = confidence; sess.aiExplain = null;
+    } else {
+      // Rapid flow: a correct answer advances immediately.
+      sess.idx = _quantPickNext(sess);
+      sess.itemStartedAt = Date.now();
+      sess.showResult = false; sess.lastResult = null; sess.lastGiven = ''; sess.showHint = false;
+    }
   } else {
     st.wrong++; st.streak = 0; sess.streakCur = 0;
     sess.missed[item.q] = item;
-    sess.showResult = true; sess.lastResult = res; sess.lastGiven = val;
+    sess.showResult = true; sess.lastResult = res; sess.lastGiven = val; sess.lastConfidence = confidence; sess.aiExplain = null;
   }
   render();
 }
@@ -4394,17 +5237,47 @@ function quantSubmit() {
 function quantNext() {
   var sess = S.quant; if (!sess || !sess.active) return;
   sess.idx = _quantPickNext(sess);
-  sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+  sess.itemStartedAt = Date.now();
+  sess.showResult = false; sess.lastResult = null; sess.lastGiven = ''; sess.aiExplain = null; sess.showHint = false;
   render();
 }
 
 function quantSkip() {
   var sess = S.quant; if (!sess || !sess.active) return;
+  var item = sess.items[sess.idx];
   var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
+  var ms = Math.max(0, Date.now() - (sess.itemStartedAt || Date.now()));
   st.seen++; // count as seen so it rotates
+  st.skips = (st.skips || 0) + 1; st.streak = 0;
+  sess.skipped = (sess.skipped || 0) + 1; sess.streakCur = 0;
+  sess.confidence = 'unsure'; // reset to the default for the next question
+  sess.attempts.push({
+    idx: sess.idx, id: item.id || '', topic: item.topic || '(untagged)', difficulty: item.difficulty || '',
+    correct: false, skipped: true, ms: ms, confidence: 'guess', answer: '',
+  });
   sess.idx = _quantPickNext(sess);
-  sess.showResult = false; sess.lastResult = null; sess.lastGiven = '';
+  sess.itemStartedAt = Date.now();
+  sess.showResult = false; sess.lastResult = null; sess.lastGiven = ''; sess.showHint = false;
   render();
+}
+
+function quantToggleHint() {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  sess.showHint = !sess.showHint;
+  render();
+}
+
+// Set the pending confidence for the current question. Updates the segmented
+// buttons in place (no full render) so the answer the user is typing isn't wiped.
+function setQuantConfidence(level) {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  sess.confidence = (level === 'sure' || level === 'guess') ? level : 'unsure';
+  var btns = document.querySelectorAll('.qc-btn');
+  for (var i = 0; i < btns.length; i++) {
+    var on = btns[i].getAttribute('data-conf') === sess.confidence;
+    btns[i].className = 'btn ' + (on ? 'bp' : 'bg') + ' btn-sm qc-btn';
+    btns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
 }
 
 function endQuantDrill() {
@@ -4412,9 +5285,46 @@ function endQuantDrill() {
   if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
   sess.active = false; sess.finished = true;
   sess.elapsedSec = Math.max(1, Math.round((Date.now() - sess.startTime) / 1000));
-  if (sess.answered > 0) { try { recordStreak(); } catch (e) {} }
+  if ((sess.answered || 0) + (sess.skipped || 0) > 0) { try { recordStreak(); } catch (e) {} try { logQuantSession(sess); } catch (e) {} }
   render();
 }
+
+// Append a lean per-session summary to S.quantLog (capped). Per-topic accuracy
+// (from the bank's tag metadata) is what powers the Prep Assistant's analytics.
+function logQuantSession(sess) {
+  var byTopic = {}, byDifficulty = {};
+  (sess.attempts || []).forEach(function (a) {
+    var it = (sess.items || [])[a.idx] || {};
+    var tp = a.topic || it.topic || '(untagged)';
+    var df = a.difficulty || it.difficulty || '(mixed)';
+    var b = byTopic[tp] || (byTopic[tp] = { seen: 0, correct: 0, skips: 0, ms: 0, sure: 0, unsure: 0, guess: 0, wrongSure: 0 });
+    if (a.skipped) b.skips++;
+    else { b.seen++; if (a.correct) b.correct++; else if (a.confidence === 'sure') b.wrongSure++; }
+    b.ms += a.ms || 0;
+    b[a.confidence || 'unsure'] = (b[a.confidence || 'unsure'] || 0) + 1;
+    var d = byDifficulty[df] || (byDifficulty[df] = { seen: 0, correct: 0 });
+    if (!a.skipped) { d.seen++; if (a.correct) d.correct++; }
+  });
+  Object.keys(byTopic).forEach(function(tp) {
+    var b = byTopic[tp];
+    b.avgSec = b.seen ? Math.round(b.ms / b.seen / 100) / 10 : 0;
+  });
+  var flt = (S.quantFilters || {})[sess.bankId] || {};
+  S.quantLog = S.quantLog || [];
+  S.quantLog.push({
+    ts: Date.now(),
+    bank: sess.bankName || '',
+    scope: { topic: flt.topic || '', difficulty: flt.difficulty || '', firm: flt.firm || '' },
+    answered: sess.answered, correct: sess.correct, skipped: sess.skipped || 0,
+    qpm: sess.elapsedSec ? Math.round(sess.answered / (sess.elapsedSec / 60)) : 0,
+    avgSec: sess.answered ? Math.round((sess.attempts || []).filter(function(a) { return !a.skipped; }).reduce(function(n, a) { return n + (a.ms || 0); }, 0) / sess.answered / 100) / 10 : 0,
+    byTopic: byTopic,
+    byDifficulty: byDifficulty,
+  });
+  if (S.quantLog.length > 300) S.quantLog = S.quantLog.slice(-300);
+  saveQuantLog();
+}
+function saveQuantLog() { lsSet('sd_quantlog', S.quantLog); }
 
 function exitQuant() {
   if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
@@ -4428,14 +5338,178 @@ function quantAddMissedToReview() {
   if (!keys.length) { toast('No missed items to add.'); return; }
   keys.forEach(function(k) {
     var it = sess.missed[k];
-    _upsertReviewCard({ front: it.q, back: it.a, note: 'From quant drill: ' + (sess.bankName || ''), topic: sess.bankName || 'Quant', sourceSection: '' });
+    _upsertReviewCard({ front: it.q, back: it.a, note: 'From quant drill: ' + (sess.bankName || '') + (it.id ? ' [' + it.id + ']' : ''), topic: it.topic || sess.bankName || 'Quant', sourceSection: '' });
   });
   toast('Added ' + keys.length + ' card' + (keys.length === 1 ? '' : 's') + ' to your review deck.');
   sess.missed = {};
   render();
 }
 
+// ── AI Verify & Coach ─────────────────────────────────────────────────────
+// On-demand: independently checks the bank's stated answer, then teaches the
+// intuition (not the arithmetic) and points to a resource to consolidate the
+// concept. Reuses the existing model proxy + streaming; no new call path.
+
+// The student's actual library (Quant Prep folder), grouped by topic so the
+// coach recommends from what they own before suggesting anything external.
+var QUANT_RESOURCES = [
+  'Probability: "Introduction to Probability" (Blitzstein & Hwang / Stat 110); "Grinstead & Snell, Introduction to Probability"; "Fifty Challenging Problems in Probability" (Mosteller); MIT 18.05 notes.',
+  'Counting & combinatorics: "Quant Club Teach: Counting, Combinatorics, Probability"; "Fifty Challenging Problems in Probability".',
+  'Expected value / brainteasers / general interview: "A Practical Guide to Quantitative Finance Interviews" (the Green Book, Xinfeng Zhou); "Heard on the Street"; "Quant Job Interview Questions and Answers" (Joshi); "An Interview Primer for Quantitative Finance"; "Quant Interview Questions"; "The Quant Compendium".',
+  'Game theory: "Game Theory Through Examples" (Prisner); "An Introduction to Game Theory" (Osborne); "Game Theory" (Bonanno).',
+  'Markov chains / stochastic processes: "Markov Chains" (Norris); "Markov Chains: In-depth Intro Text"; "Markov Chains (StatsLab Cambridge)"; the Markov-chains guide; "Stochastic Processes".',
+  'Dice problems: "A Collection of Dice Problems".',
+  'Options / derivatives / market making / volatility: "Options, Futures and Other Derivatives" (Hull); "Option Pricing and Volatility" (Natenberg); "Derivatives"; "An Introduction to Financial Markets"; "Introduction to Finance".',
+  'Poker / trading EV & risk intuition: "The Mathematics of Poker".',
+  'Mental math / speed: "Secrets of Mental Math"; plus the bank\'s own mental-math reference tables (Source 10).',
+].join('\n');
+
+function _quantCoachSys() {
+  return [
+    'You are an elite quant-trading interview coach (Jane Street / SIG / Optiver / Citadel / HRT desks). A student is drilling a problem bank and wants to (1) confirm whether the stated answer is actually correct and (2) genuinely master the idea.',
+    '',
+    'REASON SILENTLY, THEN ANSWER. Do the full computation in your head FIRST — work it from scratch, never just trust the stated answer. Only AFTER you have settled on a single final result do you start writing. Your written reply is the finished conclusion, not your scratch work.',
+    '',
+    'DO TWO THINGS, IN THIS ORDER:',
+    "1) VERDICT — State your conclusion in one decisive line: Correct, Incorrect, or Can't fully verify. If incorrect, give the right answer and name the exact error in one sentence. Then, in 2-4 tight lines, show the clean computation that proves it — the final argument only.",
+    '2) INTUITION — Teach the intuitive method a strong trader uses under time pressure: the key insight / the trick first, then a 60-second line of reasoning they could reproduce, then a fast sanity check or estimate.',
+    '',
+    'GUARDRAILS (you build mastery, you do not feed answers):',
+    '- COMMIT TO ONE VERDICT. Never give two verdicts, never reverse yourself mid-answer, never let the reader watch you change your mind. If you are unsure, resolve it before writing and say "Can\'t fully verify" — do not narrate the back-and-forth.',
+    '- NO THINKING OUT LOUD. Never write "wait", "let me recount", "actually", "hold on", "let me be precise", or any self-correction. Those belong in your head, before you write — the reply contains only the settled result.',
+    '- Intuition over arithmetic — the transferable pattern matters more than the specific number.',
+    '- Be tight and interview-length. No rambling, no padding, no re-derivations.',
+    '- Do not just restate the bank solution — add the mental model and the why.',
+    '- Always actually verify; never hand-wave the check.',
+    '- Recommend 1-3 resources to consolidate THIS concept, STRONGLY preferring the student\'s own library below. For EACH resource give the exact title AND the specific chapter number(s) (and section if you know it) — never a vague "chapter on X". Only if nothing in the library fits, suggest one well-known external resource and mark it "(not in your folder)".',
+    '',
+    'FORMAT — compact markdown, short labelled sections in this order: **Verdict**, **Intuition**, **Sanity check**, **Pattern to remember** (one line), **Study next**. Use $...$ / $$...$$ for math (KaTeX).',
+    'STUDY NEXT must be a NUMBERED, ORDERED reading plan (study item 1 first, then 2, then 3) — not an unordered pile. Each line: "Exact Title" — Chapter N (or N.M) — then a 6-10 word reason. Order by what most closes THIS student\'s weak areas (see the weak-area line in the user message): put the single highest-leverage chapter at #1 so the loop closes on the weakest spot first.',
+    '',
+    "THE STUDENT'S LIBRARY (Quant Prep folder) — recommend from these first:",
+    QUANT_RESOURCES,
+  ].join('\n');
+}
+
+// Light markdown → HTML for the coach panel: bold + inline code, plus list /
+// title / chapter emphasis so the ordered "Study next" plan reads as a focused
+// checklist instead of flat prose. $...$ KaTeX delimiters survive untouched
+// (white-space:pre-wrap keeps newlines).
+function _quantMdLite(s) {
+  var h = esc(s || '');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Quoted resource titles → accented bold so each book/target stands out.
+  h = h.replace(/&quot;([^&]{2,}?)&quot;/g, '<strong style="color:var(--acc)">$1</strong>');
+  // Chapter / section references → highlighted so the exact target is unmissable.
+  h = h.replace(/\b(Chapters?|Ch\.?|Sections?|Sec\.?|§)\s*([0-9]+(?:\.[0-9]+)?(?:\s*[-&]\s*[0-9]+(?:\.[0-9]+)?)?)/gi,
+    '<strong style="color:var(--gold)">$1&nbsp;$2</strong>');
+  // Ordered / bulleted list markers → accented, giving the plan real structure
+  // and making the reading ORDER (1, 2, 3) the most prominent thing on the line.
+  h = h.split('\n').map(function(line) {
+    var m = line.match(/^(\s*)(\d+[.)]|[-*])(\s+)(.*)$/);
+    if (!m) return line;
+    var marker = /^\d/.test(m[2]) ? m[2].replace(/\)$/, '.') : '&bull;';
+    return m[1] + '<strong style="color:var(--acc)">' + marker + '</strong>' + m[3] + m[4];
+  }).join('\n');
+  return h;
+}
+
+async function quantAIExplain() {
+  var sess = S.quant; if (!sess || !sess.active) return;
+  var item = sess.items[sess.idx]; if (!item) return;
+  var model = getPreferredModel('generation');
+  if (!hasKey(model.prov)) { toast('Add an API key in Settings to use AI Verify & Explain.'); return; }
+  var atIdx = sess.idx;
+  sess.aiExplain = { loading: true, text: '', error: '', forIdx: atIdx };
+  render();
+
+  var firms = Array.isArray(item.companies) && item.companies.length ? item.companies.join(', ') : '—';
+  var stated = item.a || (sess.lastResult && sess.lastResult.expected) || '—';
+  // Weakest topics (lowest skill first) so the coach can order Study next to target them.
+  var weak = (_quantAnalytics().topics || []).filter(function(t) { return t.acc != null; }).slice(0, 3)
+    .map(function(t) { return t.topic + ' (' + t.acc + '%)'; }).join(', ');
+  var user = 'Problem: ' + item.q
+    + '\n\nTopic: ' + (item.topic || '—') + ' | Difficulty: ' + (item.difficulty || '—') + ' | Firms: ' + firms
+    + '\n\nStated answer (from the bank): ' + stated
+    + '\n\nMy answer just now: ' + (sess.lastGiven || '(skipped / not answered)')
+    + '\n\nMy weak areas (lowest accuracy first): ' + (weak || 'not enough drill data yet — order Study next by relevance to this problem')
+    + '\n\nVerify the stated answer independently, then coach me on the intuition and an ordered Study next plan that targets my weak areas first.';
+
+  var live = function() { return S.quant === sess && sess.aiExplain && sess.aiExplain.forIdx === atIdx; };
+  try {
+    var raw = await streamGenerate(_quantCoachSys(), user, 2000, function(full) {
+      if (!live()) return; // user moved on — drop late chunks
+      sess.aiExplain.text = full;
+      var el = document.getElementById('quant-ai-out');
+      if (el) {
+        el.innerHTML = _quantMdLite(full);
+        clearTimeout(_mathStreamTimer);
+        _mathStreamTimer = setTimeout(function() {
+          if (window.renderMathInElement && el.parentNode) { try { renderMathInElement(el, _katexOpts); } catch (e) {} }
+        }, 120);
+      }
+    });
+    if (live()) { sess.aiExplain.text = raw; sess.aiExplain.loading = false; render(); }
+  } catch (e) {
+    if (live()) { sess.aiExplain.loading = false; sess.aiExplain.error = (e && e.message) || 'AI request failed.'; render(); }
+  }
+}
+
+// Panel rendered from sess.aiExplain inside the revealed-answer card.
+function _quantAIPanel(sess) {
+  var ai = sess.aiExplain;
+  if (!ai) {
+    return '<button class="btn bg btn-sm" style="margin-top:14px" onclick="quantAIExplain()" title="Independently checks the answer, teaches the intuition, and points to a resource">&#10022; Verify &amp; explain (AI)</button>';
+  }
+  var wrap = '<div style="margin-top:14px;padding:12px 14px;background:var(--card2);border:1px solid var(--brd);border-left:3px solid var(--acc);border-radius:7px">';
+  var head = '<span style="font-family:var(--sans);font-size:10.5px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.06em">&#10022; AI verify &amp; coach</span>';
+  if (ai.error) {
+    return wrap + head + '<p style="font-family:var(--sans);font-size:13px;color:#d05555;margin-top:8px">' + esc(ai.error) + '</p>'
+      + '<button class="btn bg btn-sm" style="margin-top:10px" onclick="quantAIExplain()">Retry</button></div>';
+  }
+  var placeholder = ai.loading && !ai.text ? 'Verifying independently and working out the intuition…' : '';
+  var out = '<div id="quant-ai-out" class="math-rich" aria-live="polite" style="font-family:var(--serif);font-size:14px;line-height:1.7;color:var(--tx);white-space:pre-wrap;margin-top:8px;min-height:22px">'
+    + (ai.text ? _quantMdLite(ai.text) : '<span style="color:var(--mut);font-style:italic">' + esc(placeholder) + '</span>') + '</div>';
+  var foot = ai.loading ? '' : '<button class="btn bg btn-sm" style="margin-top:10px" onclick="quantAIExplain()" title="Run again">&#8635; Re-run</button>';
+  return wrap + head + out + foot + '</div>';
+}
+
 // ── Render ──────────────────────────────────────────────────────────────────
+// Non-spoiler attribution/tag chips shown under a prompt (id · difficulty ·
+// topic · firms · source). Returns '' for plain Q/A items with no metadata.
+function _quantAttrib(item) {
+  if (!item) return '';
+  var chips = [];
+  var chip = function(txt, col, bg) {
+    return '<span style="font-family:var(--sans);font-size:10.5px;font-weight:600;color:' + (col || 'var(--mut)')
+      + ';background:' + (bg || 'var(--card2)') + ';border:1px solid var(--brd);border-radius:10px;padding:2px 8px">' + esc(txt) + '</span>';
+  };
+  if (item.id) chips.push(chip(item.id, 'var(--dim)'));
+  if (item.difficulty) {
+    var dc = item.difficulty === 'Easy' ? '#49c47e' : item.difficulty === 'Hard' ? '#d05555' : '#c49a3a';
+    chips.push(chip(item.difficulty, dc));
+  }
+  if (item.topic) chips.push(chip(item.topic, 'var(--acc)'));
+  if (Array.isArray(item.companies)) item.companies.slice(0, 4).forEach(function(c) { chips.push(chip(c, 'var(--mut)')); });
+  if (item.source) chips.push(chip(item.source, 'var(--dim)'));
+  if (!chips.length) return '';
+  return '<div class="row" style="gap:5px;flex-wrap:wrap;margin-top:11px">' + chips.join('') + '</div>';
+}
+// Source/reference attribution shown alongside a revealed answer (may spoil, so
+// only used after a miss). Renders a clickable link when reference is a URL.
+function _quantReference(item) {
+  if (!item || (!item.reference && !item.source)) return '';
+  var bits = [];
+  if (item.source) bits.push(esc(item.source));
+  if (item.reference) {
+    bits.push(/^https?:\/\//i.test(item.reference)
+      ? '<a href="' + esc(item.reference) + '" target="_blank" rel="noopener" style="color:var(--acc)">' + esc(item.reference) + '</a>'
+      : esc(item.reference));
+  }
+  return '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin-top:10px">Source: ' + bits.join(' · ') + '</p>';
+}
+
 function _quantBack() {
   return '<div class="rowsb" style="margin-bottom:20px"><div style="display:flex;align-items:center;gap:10px">'
     + '<button class="btn bg btn-sm" onclick="goStudyIntent(null)" style="padding:5px 10px;font-size:12px">&#x2190; Home</button>'
@@ -4448,17 +5522,87 @@ function renderQuant() {
   return _quantBack() + renderQuantHome();
 }
 
+function renderQuantDashboard() {
+  var a = _quantAnalytics(), rec = _quantRecommendation();
+  var stat = function(val, lbl, col) {
+    return '<div style="text-align:center;min-width:78px"><p style="font-family:var(--sans);font-size:22px;font-weight:700;color:' + (col || 'var(--tx)') + ';line-height:1">' + val + '</p>'
+      + '<p style="font-family:var(--sans);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-top:4px">' + lbl + '</p></div>';
+  };
+  var rows = a.topics.slice(0, 6).map(function(r) {
+    var col = r.skill >= 80 ? '#49c47e' : r.skill >= 62 ? '#c49a3a' : '#d05555';
+    var topicArg = esc(JSON.stringify(r.topic));
+    var trend = '';
+    if (r.trend != null && Math.abs(r.trend) >= 8) {
+      var up = r.trend > 0;
+      trend = '<span style="color:' + (up ? '#49c47e' : '#d05555') + ';font-size:10px;margin-left:4px;font-weight:600" title="' + (up ? 'improving' : 'slipping') + ' vs earlier sessions">' + (up ? '▲' : '▼') + Math.abs(r.trend) + '</span>';
+    }
+    var grid = '<div style="display:grid;grid-template-columns:minmax(120px,1.4fr) 70px 74px 74px 88px;gap:8px;align-items:center;padding:8px 0 0;font-family:var(--sans);font-size:12px">'
+      + '<span style="color:var(--tx);font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis">' + esc(r.topic) + '</span>'
+      + '<span style="color:var(--mut)">' + r.seen + ' reps</span>'
+      + '<span style="color:' + (r.acc >= 75 ? '#49c47e' : r.acc >= 60 ? '#c49a3a' : '#d05555') + ';font-weight:700">' + r.acc + '%' + trend + '</span>'
+      + '<span style="color:var(--mut)">' + r.avgSec + 's</span>'
+      + '<button class="btn bg btn-sm" style="padding:4px 9px;color:' + col + ';border-color:var(--brd)" onclick="startQuantWeakTopic(' + topicArg + ')">Repair</button>'
+      + '</div>';
+    var why = r.priorityReason
+      ? '<p style="font-family:var(--sans);font-size:10.5px;color:' + (r.urgent ? '#d05555' : 'var(--dim)') + ';margin:1px 0 0;line-height:1.4">' + (r.urgent ? '⚠ ' : '') + esc(r.priorityReason) + '</p>'
+      : '';
+    return '<div style="padding-bottom:6px;border-top:1px solid var(--brd)">' + grid + why + '</div>';
+  }).join('');
+  if (!rows) rows = '<p style="font-family:var(--sans);font-size:12.5px;color:var(--mut);line-height:1.55">No quant analytics yet. Run a mixed drill and this panel will rank weak topics by accuracy, pace, and confidence.</p>';
+  var bankTopics = _quantBankTopics();
+  var cov = _quantCoverage(a.topics, bankTopics);
+  var reading = rec.topic ? _quantReadingFor(rec.topic) : '';
+  var readingLine = reading
+    ? '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin:0 0 12px;line-height:1.5">📖 <b style="color:var(--tx)">Read:</b> ' + esc(reading) + '</p>'
+    : '';
+  var covLine = '';
+  if (cov.untouched.length) {
+    var chips = cov.untouched.slice(0, 8).map(function(t) {
+      return '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px;color:var(--gold);border-color:var(--brd)" onclick="startQuantWeakTopic(' + esc(JSON.stringify(t)) + ')">' + esc(t) + '</button>';
+    }).join(' ');
+    covLine = '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--brd)">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:7px">Never drilled — get a baseline'
+      + (cov.untouched.length > 8 ? ' (' + cov.untouched.length + ' total)' : '') + ':</p>'
+      + '<div class="row" style="gap:6px;flex-wrap:wrap">' + chips + '</div></div>';
+  }
+  return '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--gold)">'
+    + '<div class="rowsb" style="gap:10px;align-items:flex-start;margin-bottom:12px"><div>'
+    + '<p class="sh" style="margin-bottom:5px">Training dashboard</p>'
+    + '<p style="font-family:var(--sans);font-size:12.5px;color:var(--mut);line-height:1.5">' + esc(rec.detail || '') + '</p></div>'
+    + '<button class="btn bp btn-sm" onclick="startQuantRecommended()">' + esc(rec.label || 'Start recommended') + '</button></div>'
+    + readingLine
+    + '<div class="row" style="gap:18px;flex-wrap:wrap;margin-bottom:12px">'
+    + stat(a.total.acc === null ? '-' : a.total.acc + '%', 'Accuracy', a.total.acc >= 75 ? '#49c47e' : 'var(--tx)')
+    + stat(a.total.seen || 0, 'Attempts', 'var(--tx)')
+    + stat(a.total.avgSec ? a.total.avgSec + 's' : '-', 'Avg time', 'var(--mut)')
+    + stat(a.total.unsure || 0, 'Unsure/guess', 'var(--gold)')
+    + stat(a.urgentCount || 0, 'Focus now', a.urgentCount ? '#d05555' : '#49c47e')
+    + (bankTopics.length ? stat(cov.untouched.length, 'Untouched', cov.untouched.length ? 'var(--gold)' : '#49c47e') : '')
+    + '</div>'
+    + '<div style="overflow-x:auto">' + rows + '</div>'
+    + covLine
+    + '</div>';
+}
+
 function renderQuantHome() {
   var intro = '<p style="font-family:var(--sans);font-size:13px;color:var(--mut);margin:-6px 0 18px;line-height:1.6">'
-    + 'Paste a question bank and grind it rapid-fire with instant scoring — built for mental-math and probability reps. '
+    + 'Load your Quant Prep Problem Bank or paste a question bank, then grind it rapid-fire with instant scoring — built for mental-math and probability reps. '
     + 'Correct answers fly by; misses pause to show the answer and resurface more often. Items you miss can seed your spaced-review deck.</p>';
 
   // Importer
   var importer = '<div class="card" style="margin-bottom:16px">'
-    + '<p class="sh" style="margin-bottom:8px">Add a bank</p>'
+    + '<p class="sh" style="margin-bottom:8px">Problem bank</p>'
+    + '<div class="rowsb" style="gap:10px;align-items:flex-end;margin-bottom:12px">'
+    + '<div style="min-width:0;flex:1"><p style="font-family:var(--sans);font-size:13px;color:var(--tx);font-weight:700;margin-bottom:5px">Quant Prep Problem Bank</p>'
+    + '<input class="inp" id="quant-bank-file" value="' + esc(S.quantBankFile || 'problems.json') + '" placeholder="problems.json" autocomplete="off" spellcheck="false" oninput="setQuantBankFile(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();importQuantProblemBank();}" style="font-family:var(--mono,monospace);font-size:12px;height:36px">'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);line-height:1.45;margin-top:5px">File name, sub-path, or full path to your bank (.json · .jsonl · .csv) — resolved inside your home folder. Remembered for next time. Override the root with the <code>STUDIUM_QUANT_PROBLEM_BANK</code> env var.</p></div>'
+    + '<button class="btn bp btn-sm" onclick="importQuantProblemBank()">Load / refresh</button>'
+    + '</div>'
+    + '<div style="height:1px;background:var(--brd);margin:0 0 12px"></div>'
+    + '<p class="sh" style="margin-bottom:8px">Paste another bank</p>'
     + '<input class="inp" id="quant-bank-name" placeholder="Bank name (e.g. Zetamac · Green Book Ch.2)" style="margin-bottom:8px">'
-    + '<textarea class="inp" id="quant-import" placeholder="One per line: &#10;47 * 53 | 2491&#10;P(two heads in 2 flips) | 1/4&#10;&#10;…or Q:/A: lines, or a JSON array of {q,a}." style="height:130px;font-family:var(--mono,monospace);font-size:13px" oninput="setQuantImport(this.value)">' + esc(S.quantImport || '') + '</textarea>'
-    + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin:8px 0 10px">Delimiters: <code>|</code>, tab, <code>::</code>, <code>=&gt;</code>. Numbers, decimals, fractions (1/6) and percents (50%) are graded with rounding tolerance; integers must be exact.</p>'
+    + '<textarea class="inp" id="quant-import" placeholder="One per line: &#10;47 * 53 | 2491&#10;P(two heads in 2 flips) | 1/4&#10;&#10;…or Q:/A: lines, CSV, JSONL, or a JSON array of {q,a}/{question,solution}." style="height:130px;font-family:var(--mono,monospace);font-size:13px" oninput="setQuantImport(this.value)">' + esc(S.quantImport || '') + '</textarea>'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin:8px 0 10px">Delimiters: <code>|</code>, tab, <code>::</code>, <code>=&gt;</code>. Numbers, decimals, fractions (1/6) and percents (50%) are graded with rounding tolerance; worked solutions are revealed after misses.</p>'
     + '<button class="btn bp" onclick="importQuantBank()">Add bank</button>'
     + '</div>';
 
@@ -4466,14 +5610,35 @@ function renderQuantHome() {
   var banks = '';
   if (S.quantBanks.length) {
     banks = S.quantBanks.map(function(b) {
+      // Tag-filter row — only for banks whose items carry structured metadata.
+      var filterRow = '';
+      if (_bankHasMeta(b)) {
+        var flt = (S.quantFilters || {})[b.id] || {};
+        var selects = QUANT_FACETS.map(function(f) {
+          var vals = _quantFacetValues(b, f);
+          if (!vals.length) return '';
+          var opts = '<option value="">' + f.label + ': any</option>'
+            + vals.map(function(v) { return '<option value="' + esc(v) + '"' + (flt[f.key] === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('');
+          return '<select class="inp" style="width:auto;height:30px;padding:2px 8px;font-size:12px" onchange="setQuantFilter(' + b.id + ',\'' + f.key + '\',this.value)">' + opts + '</select>';
+        }).join('');
+        var matchN = _filterBankItems(b).length;
+        var anyActive = QUANT_FACETS.some(function(f) { return flt[f.key]; });
+        filterRow = '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
+          + selects
+          + '<span style="font-family:var(--sans);font-size:12px;color:' + (matchN ? 'var(--mut)' : '#d05555') + ';font-weight:600">' + matchN + ' match' + (matchN === 1 ? '' : 'es') + '</span>'
+          + (anyActive ? '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px" onclick="clearQuantFilter(' + b.id + ')">Clear</button>' : '')
+          + '</div>';
+      }
       return '<div class="card" style="margin-bottom:10px">'
         + '<div class="rowsb" style="margin-bottom:10px">'
         + '<div><p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx)">' + esc(b.name) + '</p>'
         + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut)">' + b.items.length + ' question' + (b.items.length === 1 ? '' : 's') + '</p></div>'
         + '<button class="btn bno btn-sm" onclick="deleteQuantBank(' + b.id + ')" title="Delete bank">Delete</button>'
         + '</div>'
+        + filterRow
         + '<div class="row" style="gap:8px;flex-wrap:wrap">'
         + '<button class="btn bp btn-sm" onclick="startQuantDrill(' + b.id + ',\'practice\')">Practice &rarr;</button>'
+        + '<button class="btn bg btn-sm" style="color:var(--acc);border-color:var(--acc-b)" onclick="startQuantDrill(' + b.id + ',\'learn\')">Learn mode</button>'
         + '<button class="btn bg btn-sm" style="color:var(--gold);border-color:var(--gold)" onclick="startQuantDrill(' + b.id + ',\'timed\',120)">2-min sprint</button>'
         + '<button class="btn bg btn-sm" onclick="startQuantDrill(' + b.id + ',\'timed\',300)">5-min sprint</button>'
         + '</div></div>';
@@ -4482,7 +5647,7 @@ function renderQuantHome() {
     banks = empty(SVG_ICONS.check || '', 'No banks yet', 'Paste a question bank above to start drilling');
   }
 
-  return intro + importer + (S.quantBanks.length ? '<p class="sh" style="margin:18px 0 10px">Your banks</p>' : '') + banks;
+  return renderPrepToday() + renderQuantNewTheme() + renderQuantDashboard() + intro + importer + (S.quantBanks.length ? '<p class="sh" style="margin:18px 0 10px">Your banks</p>' : '') + banks;
 }
 
 function renderQuantActive() {
@@ -4493,6 +5658,8 @@ function renderQuantActive() {
   var accCol = acc === null ? 'var(--mut)' : acc >= 80 ? '#49c47e' : acc >= 50 ? '#c49a3a' : '#d05555';
   var elapsed = Math.max(1, (Date.now() - sess.startTime) / 1000);
   var qpm = Math.round(sess.answered / (elapsed / 60));
+  var seenCount = Object.keys(sess.stats || {}).filter(function(k) { return (sess.stats[k].seen || 0) > 0; }).length;
+  var bankTotal = sess.items.length;
 
   // Stats bar
   var stat = function(val, lbl, col) {
@@ -4508,33 +5675,51 @@ function renderQuantActive() {
     + stat(acc === null ? '—' : acc + '%', 'Accuracy', accCol)
     + stat(String(sess.streakCur), 'Streak', sess.streakCur >= 3 ? '#f4a24a' : 'var(--mut)')
     + stat(sess.answered ? String(qpm) : '—', 'Q/min', 'var(--mut)')
+    + stat(seenCount + '/' + bankTotal, 'Seen', 'var(--mut)')
     + timeChip
     + '</div>'
     + '<button class="btn bg btn-sm" onclick="endQuantDrill()">End</button>'
     + '</div>';
 
+  // Attribution / tag chips — non-spoiler metadata (id · difficulty · topic · firms · source).
+  var metaLine = _quantAttrib(item);
   var prompt = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold)">'
-    + '<p class="math-rich" style="font-family:var(--serif);font-size:22px;line-height:1.6;color:var(--tx)">' + esc(item.q) + '</p></div>';
+    + '<p class="math-rich" style="font-family:var(--serif);font-size:22px;line-height:1.6;color:var(--tx)">' + _mathNormalize(item.q) + '</p>'
+    + metaLine + '</div>';
 
   var body;
   if (sess.showResult && sess.lastResult) {
-    // Only shown after a miss.
-    body = '<div class="card fu" style="border-left:3px solid #d05555">'
-      + '<div class="row" style="margin-bottom:12px;gap:8px"><span style="font-family:var(--sans);font-size:12px;color:#d05555;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Incorrect</span></div>'
+    var ok = !!sess.lastResult.correct;
+    var resultCol = ok ? '#49c47e' : '#d05555';
+    body = '<div class="card fu" style="border-left:3px solid ' + resultCol + '">'
+      + '<div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap"><span style="font-family:var(--sans);font-size:12px;color:' + resultCol + ';font-weight:700;text-transform:uppercase;letter-spacing:.06em">' + (ok ? 'Correct' : 'Incorrect') + '</span>'
+      + '<span style="font-family:var(--sans);font-size:11px;color:var(--dim)">Confidence: ' + esc(_quantConfidenceLabel(sess.lastConfidence)) + '</span></div>'
       + '<div style="padding:10px 14px;background:var(--card);border-radius:7px;border:1px solid var(--brd);margin-bottom:10px">'
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">You answered</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + esc(sess.lastGiven || '') + '</p></div>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + _mathNormalize(sess.lastGiven || '') + '</p></div>'
       + '<div style="padding:10px 14px;background:var(--card2);border-radius:7px;border:1px solid var(--brd)">'
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Answer</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + esc(sess.lastResult.expected || '') + '</p></div>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;color:var(--tx)">' + _mathNormalize(sess.lastResult.expected || '') + '</p></div>'
+      + _quantReference(item)
+      + _quantAIPanel(sess)
       + '<button class="btn bp" id="quant-next" style="margin-top:14px" onclick="quantNext()" title="Press Enter">Next &rarr;</button>'
       + '</div>';
   } else {
+    var conf = sess.confidence || 'unsure';
+    var confBtn = function(v, label) {
+      var on = conf === v;
+      return '<button type="button" class="btn ' + (on ? 'bp' : 'bg') + ' btn-sm qc-btn" data-conf="' + v + '"'
+        + ' aria-pressed="' + (on ? 'true' : 'false') + '" onclick="setQuantConfidence(\'' + v + '\')" style="padding:5px 13px">' + label + '</button>';
+    };
     body = '<div class="card">'
-      + '<input class="inp" id="quant-input" placeholder="Answer… (Enter)" autocomplete="off" inputmode="decimal" style="height:46px;font-size:16px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();quantSubmit();}">'
-      + '<div class="row" style="margin-top:12px;gap:8px">'
+      + '<input class="inp" id="quant-input" aria-label="Your answer" placeholder="Answer… (Enter)" autocomplete="off" inputmode="decimal" style="height:46px;font-size:16px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();quantSubmit();}">'
+      + (sess.showHint ? '<div style="margin-top:10px;padding:10px 12px;background:var(--card2);border:1px solid var(--brd);border-left:3px solid var(--gold);border-radius:7px"><p style="font-family:var(--sans);font-size:12.5px;color:var(--tx);line-height:1.5">' + esc(_quantTopicHint(item)) + '</p></div>' : '')
+      + '<div class="row" style="margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap">'
+      + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-right:1px" title="How sure are you? Confident misses are tracked separately.">Confidence</span>'
+      + '<div class="row" role="group" aria-label="Confidence" style="gap:5px">' + confBtn('sure', 'Sure') + confBtn('unsure', 'Unsure') + confBtn('guess', 'Guess') + '</div>'
       + '<button class="btn bp" onclick="quantSubmit()">Submit</button>'
       + '<button class="btn bg btn-sm" onclick="quantSkip()">Skip</button>'
+      + '<button class="btn bg btn-sm" onclick="quantToggleHint()">Hint</button>'
       + '</div></div>';
   }
   return statsBar + prompt + body;
@@ -4545,6 +5730,7 @@ function renderQuantSummary() {
   var acc = sess.answered ? Math.round(sess.correct / sess.answered * 100) : 0;
   var accCol = acc >= 80 ? '#49c47e' : acc >= 50 ? '#c49a3a' : '#d05555';
   var qpm = sess.elapsedSec ? (sess.answered / (sess.elapsedSec / 60)).toFixed(1) : '0';
+  var avgSec = sess.answered ? ((sess.attempts || []).filter(function(a) { return !a.skipped; }).reduce(function(n, a) { return n + (a.ms || 0); }, 0) / sess.answered / 1000).toFixed(1) : '0';
   var missedKeys = Object.keys(sess.missed || {});
 
   var bigStat = function(val, lbl, col) {
@@ -4557,16 +5743,60 @@ function renderQuantSummary() {
     + bigStat(sess.correct + '/' + sess.answered, 'Correct', 'var(--tx)')
     + bigStat(acc + '%', 'Accuracy', accCol)
     + bigStat(qpm, 'Q/min', 'var(--mut)')
+    + bigStat(avgSec + 's', 'Avg time', 'var(--mut)')
     + bigStat(String(sess.streakBest), 'Best streak', '#f4a24a')
     + '</div></div>';
+
+  // Per-topic + calibration breakdown for THIS session, straight from the
+  // attempts log — the same data that powers the dashboard, surfaced at the
+  // moment of reflection so the next move is obvious without leaving the screen.
+  var bd = _quantSessionBreakdown(sess.attempts), byTopic = bd.topics, sureWrong = bd.sureWrong, sureTotal = bd.sureTotal;
+  var calib = '';
+  if (sureTotal > 0) {
+    var cpct = Math.round(sureWrong / sureTotal * 100);
+    var ccol = sureWrong === 0 ? '#49c47e' : cpct >= 30 ? '#d05555' : '#c49a3a';
+    calib = '<div class="card" style="margin-bottom:14px;border-left:3px solid ' + ccol + '">'
+      + '<p style="font-family:var(--sans);font-size:13px;color:var(--tx);line-height:1.55">'
+      + '<b style="color:' + ccol + '">Calibration:</b> of ' + sureTotal + ' answer' + (sureTotal === 1 ? '' : 's') + ' you marked <b>Sure</b>, '
+      + (sureWrong === 0
+          ? 'every one was correct — well calibrated.'
+          : sureWrong + ' ' + (sureWrong === 1 ? 'was' : 'were') + ' wrong (' + cpct + '%). Confident misses are the costliest failure mode in a live interview — slow down to verify before committing.')
+      + '</p></div>';
+  }
+  var breakdown = '';
+  var topicKeys = Object.keys(byTopic).sort(function(x, y) {
+    return (byTopic[x].correct / byTopic[x].seen) - (byTopic[y].correct / byTopic[y].seen);
+  });
+  var meaningful = topicKeys.filter(function(t) { return t !== '(untagged)'; });
+  if (meaningful.length >= 1 && (topicKeys.length > 1 || meaningful.length === topicKeys.length)) {
+    var trows = topicKeys.map(function(tp) {
+      var r = byTopic[tp], pct = r.seen ? Math.round(r.correct / r.seen * 100) : 0;
+      var col = pct >= 75 ? '#49c47e' : pct >= 50 ? '#c49a3a' : '#d05555';
+      var bar = '<span style="display:block;height:7px;background:var(--brd);border-radius:4px;overflow:hidden">'
+        + '<span style="display:block;height:100%;width:' + pct + '%;background:' + col + '"></span></span>';
+      var act = (tp !== '(untagged)')
+        ? '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px;color:' + col + ';border-color:var(--brd)" title="Drill this topic in Learn mode" onclick="exitQuant();startQuantWeakTopic(' + esc(JSON.stringify(tp)) + ')">Drill</button>'
+        : '<span></span>';
+      return '<div style="display:grid;grid-template-columns:minmax(96px,1.4fr) 54px 1fr 44px 58px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--brd);font-family:var(--sans);font-size:12.5px">'
+        + '<span style="color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis" title="' + esc(tp) + '">' + esc(tp) + '</span>'
+        + '<span style="color:var(--mut)">' + r.correct + '/' + r.seen + '</span>'
+        + bar
+        + '<span style="color:' + col + ';font-weight:700;text-align:right">' + pct + '%</span>'
+        + act + '</div>';
+    }).join('');
+    breakdown = '<div class="card" style="margin-bottom:14px">'
+      + '<p class="sh" style="margin-bottom:3px">By topic — weakest first</p>'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:4px">Where this session landed. Repair the reds first.</p>'
+      + trows + '</div>';
+  }
 
   var missed = '';
   if (missedKeys.length) {
     var rows = missedKeys.slice(0, 20).map(function(k) {
       var it = sess.missed[k];
       return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd);font-family:var(--sans);font-size:13px">'
-        + '<span class="math-rich" style="flex:1;color:var(--mut)">' + esc(it.q) + '</span>'
-        + '<span class="math-rich" style="color:var(--tx);font-weight:600">' + esc(it.a) + '</span></div>';
+        + '<span class="math-rich" style="flex:1;color:var(--mut)">' + _mathNormalize(it.q) + '</span>'
+        + '<span class="math-rich" style="color:var(--tx);font-weight:600">' + _mathNormalize(it.a) + '</span></div>';
     }).join('');
     missed = '<div class="card" style="margin-bottom:14px">'
       + '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">Missed (' + missedKeys.length + ')</p>'
@@ -4578,9 +5808,10 @@ function renderQuantSummary() {
 
   var actions = '<div class="row" style="gap:8px;flex-wrap:wrap">'
     + '<button class="btn bp" onclick="startQuantDrill(' + sess.bankId + ',\'' + sess.mode + '\',' + (sess.mode === 'timed' ? Math.round((sess.endTime - sess.startTime) / 1000) : 0) + ')">Drill again</button>'
+    + '<button class="btn bg" style="color:var(--acc);border-color:var(--acc-b)" onclick="exitQuant();startQuantRecommended()">Recommended next</button>'
     + '<button class="btn bg" onclick="exitQuant()">Choose another bank</button>'
     + '</div>';
-  return head + missed + actions;
+  return head + calib + breakdown + missed + actions;
 }
 
 // ════════════════════════════════════════════

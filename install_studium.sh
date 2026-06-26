@@ -7,7 +7,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Studium"
+# Default install target is ~/Applications. Pass --here to build the bundle into
+# this project folder instead (handy for a self-contained, double-click artifact
+# you can keep next to the source).
 INSTALL_DIR="$HOME/Applications"
+if [ "${1:-}" = "--here" ]; then INSTALL_DIR="$SCRIPT_DIR"; fi
 APP_PATH="$INSTALL_DIR/$APP_NAME.app"
 PORT=58743
 
@@ -60,13 +64,28 @@ cat > "$APP_PATH/Contents/MacOS/studium" << 'LAUNCHER'
 RESOURCES="$(cd "$(dirname "$0")/../Resources" && pwd)"
 PORT=58743
 
+# ── Find python3 ─────────────────────────────────────
+# A GUI-launched .app inherits a minimal PATH (often just /usr/bin:/bin), so a
+# bare `python3` can miss a Homebrew-only install. Probe the usual locations
+# before giving up, and surface a clear message instead of failing silently.
+PY=""
+for cand in python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+  if command -v "$cand" >/dev/null 2>&1; then PY="$cand"; break; fi
+done
+if [ -z "$PY" ]; then
+  osascript -e 'display alert "Studium" message "Python 3 is required but was not found. Install it from python.org or run: brew install python"'
+  exit 1
+fi
+
 # ── Kill any stale server on this port ──────────────
 lsof -ti:"$PORT" 2>/dev/null | xargs kill -9 2>/dev/null || true
 sleep 0.2
 
 # ── Start the local HTTP server ──────────────────────
+# Binds 127.0.0.1 only (see studium_server.py) — nothing on the network can
+# reach it; the app stays local-only.
 cd "$RESOURCES"
-python3 "$RESOURCES/studium_server.py" >/dev/null 2>&1 &
+"$PY" "$RESOURCES/studium_server.py" >/dev/null 2>&1 &
 SERVER_PID=$!
 
 # ── Poll until the server is actually ready ──────────
