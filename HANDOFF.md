@@ -1,5 +1,41 @@
 # HANDOFF — Quant Drill audit, improvements & containerization (2026-06-20)
 
+> **Update 2026-07-20 — Exam-Prep Mode shipped (PLAN_PrepPipeline 4b).** Authorized
+> build-lock exception (David, ahead of the Optiver OA sitting 2026-07-25; logged in
+> System/logs/daily/2026-07-20.md). Shipped in `studium.html`: (1) new `oab` "Quant OA
+> battery (Optiver-style)" playbook stage in `_prepPlaybooks` + its dropdown option;
+> (2) `_prepAssess` is now **exam-aware** — a live countdown drives the top rec/pivot
+> and points to the assessment's SCORE_LOG.md; (3) `_examContext()` + `askExamFeedback()`
+> + an "🎯 Ask AI — exam readiness" button in the live countdown panel that sends
+> goals/targets + the user's logged speed scores + drill perf to `callAI` (graceful
+> no-key fallback). New state: `S.examFeedback`, `S.examFeedbackBusy`. Tests: +3 `oab`
+> countdown cases (quant.test.js 104/0); lint + parseJSON + cache + math + server-security
+> all green. **Not yet committed** (working tree was already dirty per PLAN_PrepPipeline H1).
+> Follow-up deferred: reading the Quant-Prep-side SCORE_LOG.md file for AI context (would
+> need a sandboxed text endpoint) — currently uses in-app `S.speedLog`/`S.quantLog`.
+>
+> **Same session — global Attention layer (UI/UX urgency pass).** New `_attentionItems()`
+> aggregates pending tasks/TODOs (FSRS cards due, live assessment countdown, stale drill
+> momentum, unmet Zetamac/80-in-8 gates) into one urgency-ranked list; `_attentionSummary()`
+> is the pure headline formatter (unit-tested). Surfaced as (a) a pulsing **topbar chip**
+> (`#topbar-attention`) showing the most-urgent item + "+N", click → `focusAttention()`
+> jumps to its surface; (b) **sidebar count badges** (`.nb-badge` red=now/gold=soon) on the
+> nav so pending work is visible from any tab. Defensive (every source try/caught) so it can
+> never break the shell. Clicking the chip now opens a **dropdown** of *all* pending items
+> (`toggleAttention`/`closeAttention`/`attnNavTo`, `S.attnOpen`), each row navigating to its
+> surface — backdrop-click and Escape close it. Tests 107/0, lint green (41 ids, 466 fns).
+>
+> **Same session — per-row quick actions + system-wide Pomodoro.** (a) Attention dropdown rows
+> gained a one-click action (`attnAct`/`_attnActionLabel`): cards→Review (`startTodaySession`),
+> drill→Drill (`startPrepDrill`), exam→Ask AI (`askExamFeedback`), speed→Zetamac↗. (b) New
+> **pomotroid-inspired Pomodoro** in the topbar (`#topbar-pomo`): SVG progress ring + MM:SS
+> chip → opens a dial panel (mode tabs focus/short/long, round dots, Start/Pause/Reset/Skip,
+> Web-Audio chime, sound toggle). Engine is pure-helper-driven (`_pomoFormat`/`_pomoNext`/
+> `_pomoStats` unit-tested) over a 250 ms `_pomoTimer`; completed focus sessions log to
+> `S.pomoLog` (persisted) and surface as a **Focus-time card in Progress** + live stats in the
+> panel. New state: `pomo`, `pomoCfg`, `pomoLog`, `pomoOpen`. No deps (Web Audio only). Tests
+> 112/0, lint green (42 ids, 493 fns).
+
 Scope of this session: a deep audit of the **Quant Drill** (interface, functionality,
 UI/UX) with concrete improvements **staged** for (a) intuition while using and
 (b) usefulness/accessibility of the analytics; plus a lightweight, **double-click
@@ -8,6 +44,138 @@ of every follow-up task against Studium's nature as a *local quant-prep study ap
 
 Everything in §1 and §3 is in the working tree now. §2 is the audit. §4–§6 are the
 appropriateness verdicts and the open task list.
+
+> **Update 2026-07-18 — section-flood bug fixed + Mock Interview design staged
+> (authorized by David's "fix these issues and make a pressure-tested plan" request;
+> build-lock honor-active — no `System/logs/daily/2026-07-18.md`, so NOT committed).**
+> - **Bug (reported via screenshots): the "Learn New → Choose a section" `<select>`
+>   exploded into hundreds of junk options** on a PDF-extracted book ("The Quant
+>   Compendium"). Root cause in `headingMatches` (`studium.html`): it treated ALL-CAPS
+>   running page-headers (repeated every page), numeric data/table rows, `#`-prefixed
+>   code comments, and printed table-of-contents dot-leader lines as headings. Every
+>   section picker (Learn/Explain/Quiz/Exam) inherits `studySections()`, so all were
+>   flooded. Fix: new pure `_looksLikeHeading()` guard (rejects ToC dot-leaders, pure-
+>   numeric rows, and code) + a frequency dedup in `headingMatches` (a title recurring
+>   >3× is a page-header → keep first only). On a representative 33-line sample: **9
+>   bogus sections → 3 real headings.** +19 tests in new `tests/sections.test.js`.
+>   Tests after fix: sections 19/0, quant 102/0, math 23/0, parseJSON 14/0, cache, lint —
+>   all green. **David: reload the Studium tab** (section cache recomputes on load) and
+>   re-open the Learn picker to confirm on the real doc. *Follow-up (not done, low
+>   priority):* the Learn/Explain pickers still render a flat `<select>`; grouping by
+>   document with `<optgroup>` + level indent (like `sectionPicker()`) would make even a
+>   legitimately long book navigable — staged as a UX nit, not built.
+> - **Mock Interview prep: pressure-tested design written to `docs/PLAN_MockInterview.md`**
+>   — expands `PLAN_PrepPipeline.md` C1 + 4b into 3 tiers (instrument → text AI
+>   interviewer → voice non-build), a concrete analytics spec, an assumptions→attacks
+>   pressure test, and case-tailored accessible alternatives (Optiver 80-in-8, PuzzledQuant,
+>   Pramp, peer mocks, Figgie/IMC Prosperity). Staged for a cycle; NOT built (new feature =
+>   delegated per constitution). `PLAN_PrepPipeline.md` C1 now points at it.
+> - **`/pressure-test` of that plan (2026-07-18) — §5 alternatives re-verified live; the
+>   plan was corrected in place.** Findings: 🟠 **Pramp is deprecated for quant** — acquired
+>   by Exponent, now SWE/PM-only, AI-mock removed (David's flag confirmed); retracted from the
+>   plan. 🟠 Live quant-specific leaders were omitted — **QuantBrainteasers** (free timed mock
+>   + readiness score), **QuantGuide**, **OpenQuant** — added. 🟠 F5: Tier-2 AI prob-screen
+>   collides with QuantBrainteasers, so staging was **inverted to lead with market-making**
+>   (the differentiated mode). 🟠 F9: the human-mock channel (the real P0) has **no verified
+>   source** — added §5a making it the gating human-lane action. 🟡 IMC Prosperity 4 already
+>   ended (Apr 2026); next ≈ Apr 2027. ✅ Confirmed live: Optiver 80-in-8 clones, Figgie,
+>   PuzzledQuant (as a question source, not a mock). Internal refs + assumptions §4 sound.
+> - **`/llm-council` second pass (2026-07-18) — 4-of-5 verdict: defer the build, book the
+>   human mock.** The app risks being displacement activity; analytics over 0 logged mocks is
+>   empty; the scarce resource is a human. Plan updated: new **§0.0 "Initiate now"** —
+>   (1) book the Dartmouth Center for Career Design mock via Handshake TODAY (briefs already
+>   exist), (2) use a PAPER rubric for the first ~5 mocks, (3) defer all Studium code until
+>   ~5 real mocks justify Tier 1. Calibration axis to be *computed* from `S.meta.calibration`,
+>   not self-rated. **Pramp purged** from `studium.html` (QUANT_LINKS Mocks group → Career
+>   Design + QuantBrainteasers) and from `Quant Prep/{CLAUDE.md, Mock Interviews/MOCK_SCRIPTS.md,
+>   Roadmaps & Guides/TRADING_PREP_MATERIALS.md}`. Lint + sections + quant tests green.
+>
+> **Update 2026-07-14 (4) — Quant Drill home navigability + countdown-aware
+> protocol suggestions (authorized by David's "clean up the Quant Drill UI"
+> request).** Four changes, all in `renderQuantHome`/`renderPrepToday` + one new
+> state field:
+> - **Section jump-nav** under the Drill-now card (Today · Dashboard · History ·
+>   External · Banks) — pure `#anchor` links to new `qp-*` wrapper ids; no
+>   handlers, no state.
+> - **Daily protocol strip** replaces the prose "Every day:" line on the prep
+>   card — numbered ①–④ (warm-up w/ Zetamac+Figgie links → timed set → fresh
+>   firm-tagged question w/ links → grade & log).
+> - **Next-interview countdown** (PLAN_PrepPipeline item 4b, pulled forward):
+>   `S.nextInterview` ({date,firm,stage}, persisted `sd_nextinterview`), a
+>   set/clear form on the prep card, and pure helpers `_prepPlaybooks()` +
+>   `_prepCountdown(ni,nowMs)` that condense `Quant Prep/Mock Interviews/
+>   INTERVIEW_COUNTDOWN.md` into per-horizon focus lines (T-7/T-3/T-1/day-of ·
+>   stale → debrief prompt · far → standing-loop fallback). The panel highlights
+>   gold at T≤7, red at T≤1. +6 unit tests.
+> - **Setup collapse:** the intro paragraph + importer card fold into a
+>   `<details>` once a bank is loaded — returning users land on drill/today/
+>   analytics, not setup prose.
+> Tests: quant 102/0, math 23/0, parseJSON 14/0, cache, lint, python
+> server-security — all green; running server serves the new symbols (reload the
+> tab). **Not committed to git** (H1 in `docs/PLAN_PrepPipeline.md`).
+>
+> **Update 2026-07-14 (3) — prep card pointed at the new Quant Prep materials
+> (data-only edit, authorized by David's "organize the scheduler and Studium" request).**
+> No logic touched. `PREP_SCHEDULE` `res` strings for weeks 3 and 8–12 now name the
+> 2026-07-14 additions (`Mental Math/MENTAL_MATH_TRAINING.md`, `Mock Interviews/
+> {MOCK_SCRIPTS,PIPELINE_GUIDE,BEHAVIORAL_BANK,INTERVIEW_COUNTDOWN}.md`,
+> `Applications/Quant_Application_Tracker.xlsx`); `QUANT_LINKS` gains two Optiver 80-in-8 practice
+> clones and the Pramp note points at the local mock scripts. T-minus interview
+> playbooks live in `Quant Prep/Mock Interviews/INTERVIEW_COUNTDOWN.md` — a dated
+> "next interview" assistant hook is staged as a cycle item in
+> `docs/PLAN_PrepPipeline.md`, not built ad hoc. Tests after edit: quant 96/0,
+> math 23/0, parseJSON 14/0, cache, lint — all green. **Not committed to git**
+> (H1 in `docs/PLAN_PrepPipeline.md` covers committing the whole tree).
+>
+> **Update 2026-07-14 (2) — four behavioral fixes A–D (ad-hoc build-lock override,
+> authorized by David).** All in `studium.html`; tests green (quant 96/0, math 23/0,
+> parseJSON 14/0, cache, python SSRF, lint gate). **Not committed to git.**
+> - **A · FSRS no longer depends on a live CDN.** The scheduler was a runtime
+>   `import('https://esm.sh/ts-fsrs')` in a swallow-the-error try/catch; when it
+>   failed (offline/CSP/esm.sh) `window._fsrsLib` was null and **every `rateCard`
+>   silently no-oped** → due backlog never drained, Review re-served the same cards,
+>   `recommendSession` jammed on "Review" (rule `due>=5`) and never reached
+>   Learn/Drill/Explain/Exam. Replaced with a **self-contained built-in scheduler**
+>   (same `createEmptyCard/generatorParameters/fsrs().next/Rating` interface,
+>   FSRS-like stability/difficulty). ⚠ **Behavior change:** scheduling is now an
+>   approximation of FSRS-6, not canonical ts-fsrs — the right trade for a local,
+>   offline, no-network-dep app, but flag if canonical FSRS is wanted (would need
+>   inlining the real lib). Verified: ratings advance due dates; a rated card is no
+>   longer due.
+> - **B · Quant Drill now has cross-session memory.** `sess.stats` was per-session,
+>   so every question looked "unseen" each drill and mastery never stuck. Added
+>   persistent `S.quantItemStats` (`sd_quantitemstats`, keyed by id or normalized
+>   stem via `_quantItemKey`), seeded into each session; `_quantPickNext` now shows
+>   every item **once before repeating** (`sessionSeen` pool) then weights by carried
+>   history. +5 unit tests.
+> - **C · Roadmap week selector.** `_prepToday()` only ever exposed the current week
+>   and "Drill this week's focus" was hardwired to it — no way to revisit missed
+>   weeks. Added `_prepViewWeek()` + `setPrepWeek()` + a week `<select>` on the prep
+>   card (catch-up banner when off-current); `startPrepDrill` drills the selected
+>   week. `_prepToday()` stays the true calendar position for assistant/checkpoints.
+> - **D · Reset for polluted analytics.** `resetQuantLog()` + a "Reset analytics"
+>   button in the Drill-history card — clears `S.quantLog` (weak-topic/calibration/
+>   recommendation history corrupted by the earlier grading bug); banks + per-question
+>   progress kept. **David should click it once** to clear the poisoned history.
+>
+> **Update 2026-07-14 — grader braceless-fraction bug fixed (ad-hoc build-lock
+> override, authorized by David).** `_quantNumberCandidates` only expanded *braced*
+> `\frac{a}{b}`; the bank's idiomatic braceless shorthand (`\tfrac13`, `\tfrac32`)
+> was mangled into a bogus integer (`\tfrac13` → `"13"`), so a correct fraction
+> answer graded **INCORRECT**. Surfaced on **QG-316 "sharpe-marbles"**: user typed
+> the exact answer `1/3` and was marked wrong. Root-cause fix at
+> `studium.html:4321` (expand braced **and** braceless single-token forms);
+> ~377/982 bank problems used braceless fractions and were latently affected, plus
+> the accuracy/calibration analytics built on grading. Note: the "(mean/variance)"
+> definition is faithful to the QuantGuide source (the "Sharpe" title is the trap) —
+> the math was **not** the bug. +3 regression tests. `node tests/quant.test.js` →
+> 91/0, `lint.js`/`math.test.js`/`parseJSON`/`cache` green. **Not committed to git.**
+>
+> **Update 2026-07-05 — follow-up tasks A–F are done.** All six open tasks from §3
+> were implemented and verified (`node tests/quant.test.js` → 88 passed / 0 failed,
+> `tests/lint.js` green, `tests/parseJSON.test.js` + `tests/cache.test.js` green,
+> `python3 tests/test_server_security.py` green). G remains declined by design.
+> Details in the §3 table below. Nothing here is committed to git yet.
 
 ---
 
@@ -112,17 +280,17 @@ remained rough, ranked.
 
 ## 3. Targeted follow-up tasks
 
-| ID | Task | Why | Scope / files | Appropriate? |
-|----|------|-----|---------------|--------------|
-| A | Keyboard verbs for Skip/Hint (result-shown only, or `?`/`Tab`) | Completes the rapid-fire loop without fighting numeric answers | `renderQuantActive`, global keydown (`studium.html` ~7545) | ✅ Core to fast reps |
-| B | Non-color skill cue in dashboard (skill label / `title`) | Accessibility; finishes the a11y pass | `renderQuantDashboard` | ✅ Cheap, on-goal |
-| C | Persistent "Resume / Drill recommended" affordance atop `renderQuantHome` | Shortens path to the one thing that matters | `renderQuantHome` ordering | ✅ Intuition |
-| D | "Time's up" beat before the timed summary | Removes the abrupt cut | `_quantTick` / `endQuantDrill` | ◐ Polish, low priority |
-| E | Drill-history view + CSV/JSON export | Longitudinal insight; study journal | new render + small export helper; data already in `S.quantLog` | ◐ Useful but watch scope — keep it lightweight, no server round-trip |
-| F | One-line nudge that tagging a pasted bank unlocks analytics | Sets expectations for plain `Q\|A` banks | `renderQuantHome` importer copy | ✅ Tiny |
-| G | (Optional) Zero-dependency bundle via PyInstaller | Removes the "needs system python3" caveat | new build path | ✗ Heavyweight — see §4; document, don't default |
+| ID | Status | Task | How it landed (2026-07-05) |
+|----|--------|------|----------------------------|
+| A | ✅ done | Keyboard verbs for Skip/Hint | `Esc` skips, `?` toggles the hint — bound in the global keydown only while answering (never on the result screen, never stealing digits from the answer box); buttons now read `Skip (esc)` / `Hint (?)`, matching the `(Enter)` placeholder convention |
+| B | ✅ done | Non-color skill cue in dashboard | Each topic row gains a skill column showing the numeric score + a text band (`strong`/`fair`/`weak`) with an explanatory `title`; the Repair button carries the same info in its tooltip — no signal is color-only anymore |
+| C | ✅ done | Persistent drill affordance atop `renderQuantHome` | A "Drill now" card is pinned first on the quant home (before Prep-today/theme/dashboard) with the recommendation detail + a one-click `startQuantRecommended()` button; "Resume" isn't a state that exists (leaving the drill tears the session down), so the affordance is start-recommended |
+| D | ✅ done | "Time's up" beat before the timed summary | `_quantTick` → `_quantTimeUp()`: input locks (`timeUp` guards on submit/skip/hint/next), a gold "TIME'S UP" banner renders for 1.5 s, then `endQuantDrill()` scores. Ending early via End during the beat stays safe |
+| E | ✅ done | Drill-history view + CSV/JSON export | Collapsed "Drill history" card after the dashboard: last 15 sessions (date, bank, scope, score, acc%, q/m) + Export CSV / Export JSON as client-side Blob downloads — no server round-trip, data straight from `S.quantLog`. Pure helpers `_quantHistoryRows` / `_csvCell` / `_quantHistoryCSV` with 6 new unit tests |
+| F | ✅ done | Tagging-unlocks-analytics nudge | One dim line in the paste-importer copy: topic tags unlock the dashboard, weak-topic drills, and per-topic analytics; plain `Q\|A` banks drill fine but stay analytically thin |
+| G | ✗ declined | Zero-dependency bundle via PyInstaller | Unchanged — documented option, not the default (see §4) |
 
-Effort is small for A–D and F; E is medium; G is explicitly *not* recommended as
+Effort was small for A–D and F; E was medium; G is explicitly *not* recommended as
 the default (see §4).
 
 ---
@@ -186,7 +354,7 @@ one HTML file" constraint.
 ## 6. How to verify
 
 ```bash
-node tests/quant.test.js     # 77 passed, 0 failed (5 new for _quantSessionBreakdown)
+node tests/quant.test.js     # 88 passed, 0 failed (5 for _quantSessionBreakdown, 6 for the history/CSV helpers)
 node tests/lint.js           # all checks passed (handler/id/state integrity)
 python3 tests/test_server_security.py   # SSRF / body-cap (unchanged this session)
 

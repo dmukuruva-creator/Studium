@@ -70,6 +70,52 @@ input.inp{height:42px}
 .bdg-done{background:var(--acc-t);color:var(--acc-strong);border:1px solid var(--acc-b)}
 .bdg-open{background:var(--warn-t);color:var(--warn);border:1px solid rgba(180,83,9,0.2)}
 .bdg-neutral{background:var(--surf);color:var(--dim);border:1px solid var(--brd)}
+/* Attention layer — global urgency for pending tasks/TODOs */
+.nb-badge{position:absolute;top:1px;right:1px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;font-family:var(--sans);font-size:9.5px;font-weight:800;line-height:15px;text-align:center;color:#fff;background:var(--acc);box-shadow:0 0 0 1.5px var(--bg)}
+.nb-badge-now{background:#d05555}
+.nb-badge-soon{background:var(--gold);color:#3a2d00}
+.attn-chip{display:inline-flex;align-items:center;gap:7px;padding:4px 12px;border-radius:20px;border:1px solid var(--brd);background:var(--card);font-family:var(--sans);font-size:12px;font-weight:700;color:var(--tx);cursor:pointer;transition:filter .15s,transform .12s;max-width:340px}
+.attn-chip:hover{filter:brightness(.97);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+.attn-chip .attn-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex-shrink:0}
+.attn-now{border-color:rgba(208,85,85,0.45)}
+.attn-now .attn-dot{background:#d05555;box-shadow:0 0 7px rgba(208,85,85,0.6);animation:attnPulse 1.6s ease-in-out infinite}
+.attn-soon{border-color:var(--gold)}
+.attn-soon .attn-dot{background:var(--gold)}
+.attn-info .attn-dot{background:var(--acc)}
+@keyframes attnPulse{0%,100%{opacity:1}50%{opacity:.35}}
+#topbar-attention{position:relative;display:flex;align-items:center}
+.attn-backdrop{position:fixed;inset:0;z-index:40;background:transparent}
+.attn-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:41;width:300px;max-width:min(300px,78vw);background:var(--card);border:1px solid var(--brd);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:6px;animation:attnDrop .13s ease}
+@keyframes attnDrop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.attn-panel-hd{display:flex;justify-content:space-between;align-items:center;font-family:var(--sans);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);padding:6px 10px 5px}
+.attn-row{display:flex;align-items:center;gap:4px;border-radius:var(--radius-sm);transition:background .12s}
+.attn-row:hover{background:var(--surf)}
+.attn-rmain{display:flex;align-items:center;gap:9px;flex:1;min-width:0;text-align:left;background:transparent;border:none;padding:8px 4px 8px 10px;cursor:pointer;font-family:var(--sans);font-size:12.5px;color:var(--tx)}
+.attn-rdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.attn-rlabel{flex:1;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn-raction{flex-shrink:0;margin-right:7px;padding:3px 10px;border-radius:20px;border:1px solid var(--acc-b);background:var(--acc-t);color:var(--acc-strong);font-family:var(--sans);font-size:11px;font-weight:700;cursor:pointer;transition:filter .12s}
+.attn-raction:hover{filter:brightness(.96)}
+/* Pomodoro (pomotroid-inspired) */
+#topbar-pomo{position:relative;display:flex;align-items:center}
+.pomo-chip{display:inline-flex;align-items:center;gap:7px;padding:3px 11px 3px 6px;border-radius:20px;border:1px solid var(--brd);background:var(--card);cursor:pointer;transition:filter .15s,transform .12s}
+.pomo-chip:hover{filter:brightness(.97);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+.pomo-mini{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
+.pomo-time{font-family:var(--mono,ui-monospace,monospace);font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.pomo-backdrop{position:fixed;inset:0;z-index:40;background:transparent}
+.pomo-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:41;width:280px;background:var(--card);border:1px solid var(--brd);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:16px;animation:attnDrop .13s ease;text-align:center}
+.pomo-modes{display:flex;gap:4px;justify-content:center;margin-bottom:14px}
+.pomo-mode{flex:1;padding:5px 6px;border-radius:20px;border:1px solid var(--brd);background:transparent;color:var(--mut);font-family:var(--sans);font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.pomo-mode:hover{background:var(--surf)}
+.pomo-mode.act{background:var(--surf);color:var(--tx);border-color:var(--acc-b)}
+.pomo-dial{position:relative;width:168px;height:168px;margin:0 auto 12px}
+.pomo-dial-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.pomo-dial-time{font-family:var(--mono,ui-monospace,monospace);font-size:38px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.pomo-dial-lbl{font-family:var(--sans);font-size:11px;color:var(--mut);font-weight:600}
+.pomo-dots{display:flex;gap:6px;justify-content:center;margin-bottom:14px}
+.pomo-dot{width:7px;height:7px;border-radius:50%;transition:background .2s}
+.pomo-ctrls{display:flex;gap:7px;align-items:center;justify-content:center;margin-bottom:12px}
+.pomo-stats{font-family:var(--sans);font-size:11px;color:var(--mut);border-top:1px solid var(--brd);padding-top:10px;line-height:1.6}
 /* Layout helpers */
 .row{display:flex;align-items:center;gap:12px}
 .rowsb{display:flex;align-items:center;justify-content:space-between}
@@ -168,6 +214,8 @@ input.inp{height:42px}
   <div id="main">
     <div id="topbar">
       <div id="topbar-title"></div>
+      <div id="topbar-attention"></div>
+      <div id="topbar-pomo"></div>
       <div id="topbar-model"></div>
     </div>
     <div id="content"><main id="view" tabindex="-1"></main></div>
@@ -186,14 +234,61 @@ input.inp{height:42px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
-<script type="module">
-  try {
-    const { createEmptyCard, fsrs, generatorParameters, Rating } = await import('https://esm.sh/ts-fsrs');
-    window._fsrsLib = { createEmptyCard, fsrs, generatorParameters, Rating };
-    document.dispatchEvent(new CustomEvent('fsrs-ready'));
-  } catch(e) {
-    console.warn('ts-fsrs CDN load failed — FSRS scheduling disabled:', e.message);
-  }
+<script>
+  // Spaced-repetition scheduler — self-contained, NO network dependency.
+  // Previously this imported ts-fsrs from a CDN (esm.sh) at runtime. When that
+  // import failed — offline, CSP, or an esm.sh hiccup, all likely for a "local,
+  // double-click" app — window._fsrsLib was never set, so EVERY card rating
+  // silently no-oped (rateCard bails on !lib). The due backlog never drained,
+  // Review re-served the same cards forever, and recommendSession jammed on
+  // "Review" (rule: due>=5). This built-in implements the small interface the app
+  // uses (createEmptyCard / generatorParameters / fsrs(p).next / Rating) with an
+  // FSRS-like stability/difficulty model, so scheduling always works locally.
+  (function () {
+    var Rating = { Again: 1, Hard: 2, Good: 3, Easy: 4 };
+    function iso(d) { return (d instanceof Date ? d : new Date(d)).toISOString(); }
+    function createEmptyCard(now) {
+      var t = now ? new Date(now) : new Date();
+      return { due: iso(t), stability: 0, difficulty: 5, elapsed_days: 0,
+        scheduled_days: 0, reps: 0, lapses: 0, state: 0, last_review: null };
+    }
+    function generatorParameters() { return {}; }
+    function fsrs() {
+      return { next: function (card, now, rating) {
+        now = now instanceof Date ? now : new Date(now || Date.now());
+        var c = Object.assign(createEmptyCard(now), card || {});
+        var prevState = c.state || 0;
+        var stability = +c.stability || 0;
+        var difficulty = Math.min(10, Math.max(1,
+          (+c.difficulty || 5) + (({ 1: 1.2, 2: 0.4, 3: -0.2, 4: -0.8 })[rating] || 0)));
+        var lapses = +c.lapses || 0, reps = (+c.reps || 0) + 1, intervalDays, due;
+        if (rating === Rating.Again) {
+          if (prevState === 2) lapses += 1;
+          stability = Math.max(0.4, stability * 0.4);
+          intervalDays = 0;
+          due = new Date(now.getTime() + 10 * 60000);            // ~10-min relearn step
+          c.state = prevState === 2 ? 3 : 1;
+        } else {
+          var mult = ({ 2: 1.2, 3: 2.5, 4: 4.0 })[rating] || 2.5; // Hard/Good/Easy growth
+          stability = stability
+            ? stability * mult * (1 + (5 - difficulty) * 0.05)     // easier cards grow faster
+            : (({ 2: 0.6, 3: 1.0, 4: 2.5 })[rating] || 1.0);       // first success
+          stability = Math.max(0.4, stability);
+          intervalDays = Math.max(rating === Rating.Hard ? 0 : 1, Math.round(stability));
+          due = new Date(now.getTime() + Math.max(0.007, intervalDays) * 86400000);
+          c.state = 2;                                            // Review
+        }
+        c.elapsed_days = c.last_review ? Math.max(0, Math.round((now - new Date(c.last_review)) / 86400000)) : 0;
+        c.stability = Math.round(stability * 1000) / 1000;
+        c.difficulty = Math.round(difficulty * 100) / 100;
+        c.reps = reps; c.lapses = lapses; c.scheduled_days = intervalDays;
+        c.last_review = iso(now); c.due = iso(due);
+        return { card: c };
+      } };
+    }
+    window._fsrsLib = { createEmptyCard: createEmptyCard, generatorParameters: generatorParameters, fsrs: fsrs, Rating: Rating };
+    try { document.dispatchEvent(new CustomEvent('fsrs-ready')); } catch (e) {}
+  })();
 </script>
 <script>
 'use strict';
@@ -320,7 +415,19 @@ const S = {
   quantBanks: [],          // [{id,name,items:[{q,a,id?,topic?,difficulty?,companies?,tracks?,reference?,source?}],createdAt}]
   quantFilters: {},        // transient per-bank tag filter: {bankId:{difficulty,topic,firm,track}}
   quantLog: [],            // capped per-session drill summaries [{ts,bank,scope,answered,correct,byTopic}] — powers the Prep Assistant
+  quantItemStats: {},      // persistent per-question memory {key:{seen,correct,wrong,streak,lastTs}} — carries mastery across drills so seen items fade instead of resetting each session
+  prepWeekView: null,      // roadmap week the prep card is showing (n); null = current week (auto). Transient view state — lets you revisit/drill earlier weeks you missed
   speedLog: [],            // capped speed/live-game scores [{ts,kind,val}] — Zetamac/80-in-8/Figgie; feeds the Prep Assistant
+  nextInterview: null,     // {date:'YYYY-MM-DD', firm, stage:'oa'|'oab'|'phone'|'mm'|'superday'} — drives the prep card's T-minus playbook suggestion (INTERVIEW_COUNTDOWN.md)
+  examFeedback: '',        // last AI exam-readiness reply (transient; rendered in the live countdown panel)
+  examFeedbackBusy: false, // true while the exam-readiness AI call is in flight (transient)
+  checkpointLog: [],       // weekly checkpoints [{week:'2026-W26',ts,acc,answered,label,note}] — one cold read per ISO week
+  quantHistoryOpen: false, // drill-history card expanded/collapsed (transient)
+  attnOpen: false,         // topbar attention dropdown open/closed (transient)
+  pomo: { mode: 'focus', running: false, remainingMs: 1500000, round: 1, endTs: 0 }, // system-wide Pomodoro runtime (transient)
+  pomoCfg: { focus: 25, short: 5, long: 15, longEvery: 4, sound: true }, // Pomodoro durations (min) + long-break cadence (persisted)
+  pomoLog: [],             // completed focus sessions [{ts, min}] — powers focus-time analytics (persisted)
+  pomoOpen: false,         // Pomodoro panel open/closed (transient)
   quantImport: '',         // in-progress paste in the bank importer
   quantBankFile: 'problems.json', // user-entered bank file/sub-path to retrieve from the Quant Prep folder
   quantThemesText: null,   // cached Quant_Themes.tex contents (lazy-loaded; null = not yet fetched)
@@ -566,8 +673,14 @@ async function loadState() {
   S.quantBanks      = lsGet('sd_quantbanks')      || [];
   S.quantBankFile   = lsGet('sd_quantbankfile')   || 'problems.json';
   S.quantLog        = lsGet('sd_quantlog')        || [];
+  S.quantItemStats  = lsGet('sd_quantitemstats')  || {};
   S.quantThemeAcks  = lsGet('sd_quantthemeacks')  || [];
+  S.nextInterview   = lsGet('sd_nextinterview')   || null;
   S.speedLog        = lsGet('sd_speedlog')        || [];
+  S.checkpointLog   = lsGet('sd_checkpointlog')   || [];
+  S.pomoLog         = lsGet('sd_pomolog')         || [];
+  S.pomoCfg         = Object.assign({ focus: 25, short: 5, long: 15, longEvery: 4, sound: true }, lsGet('sd_pomocfg') || {});
+  S.pomo.remainingMs = (S.pomoCfg.focus || 25) * 60000;
   var savedMeta = lsGet('sd_meta');
   if (savedMeta && typeof savedMeta === 'object') Object.assign(S.meta, savedMeta);
   S.analytics = normalizeAnalytics(lsGet('sd_analytics'));
@@ -2240,7 +2353,7 @@ async function todaySubmitQ() {
       S.todayGrading.text = full;
       var el = document.getElementById('today-grade-stream');
       if (el) {
-        el.innerHTML = esc(extractStreamFeedback(full) || '•••');
+        el.innerHTML = _mathNormalize(extractStreamFeedback(full) || '•••');
         clearTimeout(_mathStreamTimer);
         _mathStreamTimer = setTimeout(function() {
           if (window.renderMathInElement && el.parentNode) { try { renderMathInElement(el, _katexOpts); } catch(e) {} }
@@ -2276,18 +2389,63 @@ function todayNextQ() {
   render();
 }
 
+// Does a candidate string actually read like a section heading? PDF text
+// extraction routinely emits several classes of pseudo-heading that must be
+// rejected, or a single book explodes into hundreds of bogus "sections":
+//   1. printed table-of-contents entries — "Foo . . . . . 12" (dot leaders);
+//   2. pure numeric data / table rows — "500", "0 1500 3000", "0.1 0.12 …";
+//   3. lines of code / pseudocode — "signal = pd.DataFrame(...)", "import numpy",
+//      "if buy_size > 0: orders . append ( ... )", "class Trader :";
+//   4. column / hyphenation fragments — "nance", "erence", "ing Ladder",
+//      "perity 4)" — where extraction split a word across a line or column break.
+// A genuine heading is a short, capitalised prose title, so it must contain real
+// words, start with a capital, and carry none of those signatures. We rely on
+// STRUCTURAL signals (operators, block colons, snake_case, tokenised call
+// punctuation) rather than programming keywords, because keywords like "for",
+// "in", "and", "is" are also ordinary heading words ("Calls and Puts").
+function _looksLikeHeading(title) {
+  var t = String(title || '').trim();
+  if (t.length < 3 || t.length > 90) return false;
+  if (!/[A-Za-z]{2,}/.test(t)) return false;                              // no word → numeric/data row
+  if (/\.{3,}|(?:\.\s){2,}|…/.test(t)) return false;                      // ToC dot-leaders
+  // First letter of a real heading is capitalised. Column/hyphenation
+  // fragments start mid-word, lower-case ("nance", "ing Ladder", "perity 4)").
+  var firstAlpha = t.match(/[A-Za-z]/);
+  if (firstAlpha && firstAlpha[0] !== firstAlpha[0].toUpperCase()) return false;
+  if (/[=~{}<>≤≥]|;\s|\b(import|def|return|lambda|print)\b/.test(t)) return false; // code: operators / obvious keywords
+  if (/:\s*$/.test(t)) return false;                                      // Python block colon: "class Trader :"
+  if (/\b\w+_\w+\b/.test(t)) return false;                                // snake_case identifier: "best_bid", "Z_ENTRY"
+  if (/\s\.\s|\(\s|\s\)/.test(t)) return false;                           // tokenised call punctuation: " . ", "( ", " )"
+  return true;
+}
+
 function headingMatches(text) {
-  var out = [], offset = 0;
+  var cand = [], offset = 0, freq = {};
   text.split('\n').forEach(function(raw) {
     var s = raw.trim(), m, level = 0, title = '';
     if ((m = s.match(/^(#{1,6})\s+(.+?)\s*#*$/))) { level = m[1].length; title = m[2]; }
     else if ((m = s.match(/^((?:\d+\.)+\d*|\d+)[.)]?\s+(.{3,100})$/))) { level = Math.min(4, m[1].split('.').filter(Boolean).length + 1); title = m[2]; }
     else if ((m = s.match(/^(chapter|section|unit|part)\s+\w+[:.)-]?\s+(.{3,100})$/i))) { level = /chapter|unit|part/i.test(m[1]) ? 1 : 2; title = m[0]; }
-    else if (/^[A-Z][A-Z0-9 ,:;()/-]{4,80}$/.test(s) && s.split(/\s+/).length <= 10) { level = 2; title = s; }
-    if (level && title) out.push({ index:offset, rawLen:raw.length, level:level, title:title.trim() });
+    else if (/^[A-Z][A-Z0-9 ,:;()/-]{4,80}$/.test(s) && s.split(/\s+/).length >= 2 && s.split(/\s+/).length <= 10) { level = 2; title = s; }
+    var t = (title || '').trim();
+    if (level && t && _looksLikeHeading(t)) {
+      var key = t.toLowerCase();
+      cand.push({ index:offset, rawLen:raw.length, level:level, title:t, key:key });
+      freq[key] = (freq[key] || 0) + 1;
+    }
     offset += raw.length + 1;
   });
-  return out;
+  // Collapse running page-headers: PDF extraction repeats a chapter/running
+  // header on every page, so the same title recurs many times. A real heading
+  // is near-unique; anything appearing >3× is a page-header — keep its first
+  // occurrence only. (Trade-off: a heading legitimately reused >3× in one doc,
+  // e.g. a per-chapter "Exercises", collapses to one entry — acceptable for a
+  // navigation list, and far better than a wall of duplicates.)
+  var seen = {};
+  return cand.filter(function(c) {
+    if (freq[c.key] > 3) { if (seen[c.key]) return false; seen[c.key] = 1; }
+    return true;
+  }).map(function(c) { return { index:c.index, rawLen:c.rawLen, level:c.level, title:c.title }; });
 }
 
 function sectionPicker() {
@@ -2458,8 +2616,14 @@ function _mathNormalize(raw) {
     return '\\(' + m + '\\)';
   });
 
-  // 6) Restore protected math, then the literal dollar sign.
-  s = s.replace(new RegExp(MO + '(\\d+)' + MO, 'g'), function(_, i) { return math[+i]; });
+  // 6) Restore protected math with its <, >, & entity-escaped. renderMathInElement
+  //    typesets from the DOM text node (entities already decoded back to literals),
+  //    so escaping here keeps inline math like $P(a<b)$ from injecting a stray tag
+  //    into the innerHTML while still rendering as a<b. The delimiters ($, \(, \[)
+  //    contain none of these chars, so they survive intact.
+  s = s.replace(new RegExp(MO + '(\\d+)' + MO, 'g'), function(_, i) {
+    return math[+i].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  });
   return s.split(DOL).join('<span class="tex-literal">$</span>');
 }
 var _activeAbort = null;
@@ -2630,11 +2794,11 @@ function renderQuiz() {
   // Cloze: replace "___" with a styled blank in the displayed sentence
   var questionDisplay;
   if (q.type === 'cloze') {
-    var clozeHtml = esc(q.question).replace(/___+/, '<span style="display:inline-block;min-width:80px;border-bottom:2px solid var(--gold);background:var(--acc-t);border-radius:2px;padding:0 6px;font-style:normal">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
+    var clozeHtml = _mathNormalize(q.question).replace(/___+/, '<span style="display:inline-block;min-width:80px;border-bottom:2px solid var(--gold);background:var(--acc-t);border-radius:2px;padding:0 6px;font-style:normal">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
     questionDisplay = '<p class="math-rich" style="font-family:var(--serif);font-size:18px;line-height:1.85;color:var(--tx)">' + clozeHtml + '</p>'
       + '<span class="bdg bdg-neutral" style="margin-top:8px;display:inline-block">Fill in the blank</span>';
   } else {
-    questionDisplay = '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;color:var(--tx)">' + esc(q.question) + '</p>';
+    questionDisplay = '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;color:var(--tx)">' + _mathNormalize(q.question) + '</p>';
   }
 
   var levelBadge = q.level && q.level !== 'recall' ? ' <span class="bdg bdg-neutral">' + esc(q.level) + '</span>' : '';
@@ -2646,7 +2810,7 @@ function renderQuiz() {
     + questionDisplay
     + (q.hint ? '<div style="margin-top:14px;border-top:1px solid var(--brd);padding-top:12px">'
       + '<button class="btn bg btn-sm" style="font-size:12px;color:var(--mut)" onclick="toggleHint()">' + (_hintShown ? 'Hide hint' : 'Show hint') + '</button>'
-      + (_hintShown ? '<p class="math-rich" style="margin-top:10px;font-size:14px;color:var(--mut);font-style:italic;line-height:1.65">' + esc(q.hint) + '</p>' : '')
+      + (_hintShown ? '<p class="math-rich" style="margin-top:10px;font-size:14px;color:var(--mut);font-style:italic;line-height:1.65">' + _mathNormalize(q.hint) + '</p>' : '')
       + '</div>' : '')
     + '</div>';
 
@@ -2673,18 +2837,18 @@ function renderQuiz() {
       + '<div class="row" style="margin-bottom:14px">' + pips
       + '<span style="font-family:var(--sans);font-size:12px;color:' + col + ';font-weight:600;margin-left:8px;text-transform:uppercase;letter-spacing:.06em">' + scoreLabel + '</span>'
       + '</div>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;margin-bottom:14px;color:var(--tx)">' + esc(S.result.feedback) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;margin-bottom:14px;color:var(--tx)">' + _mathNormalize(S.result.feedback) + '</p>'
       + '<div style="padding:12px 16px;background:var(--card);border-radius:7px;border:1px solid var(--brd);margin-bottom:14px">'
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Your answer</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + esc(S.ans || '') + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + _mathNormalize(S.ans || '') + '</p>'
       + '</div>'
       + '<div style="padding:12px 16px;background:var(--card2);border-radius:7px;border:1px solid var(--brd)">'
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Reference answer</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + esc(S.result.modelAnswer) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + _mathNormalize(S.result.modelAnswer) + '</p>'
       + '</div>'
       + (S.result.keyIdea ? '<div style="margin-top:14px;padding:12px 16px;background:var(--acc-t);border-radius:7px;border-left:3px solid var(--gold)">'
         + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Key idea</p>'
-        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;color:var(--tx);line-height:1.7">' + esc(S.result.keyIdea) + '</p>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;color:var(--tx);line-height:1.7">' + _mathNormalize(S.result.keyIdea) + '</p>'
         + '</div>' : '')
       + '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">'
       + '<button class="btn bp" id="q-continue" onclick="nextQ()" title="Press Enter">Continue &rarr;</button>'
@@ -2722,7 +2886,7 @@ function renderQuiz() {
   if (S.result && S.result.misconception) {
     misconceptionHTML = '<div class="card fu" style="margin-top:12px;border-left:3px solid var(--warn)">'
       + '<p class="sh" style="margin-bottom:8px;color:var(--warn)">Misconception identified</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.75;color:var(--tx);white-space:pre-wrap">' + esc(S.result.misconception) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.75;color:var(--tx);white-space:pre-wrap">' + _mathNormalize(S.result.misconception) + '</p>'
       + '</div>';
   }
 
@@ -2732,7 +2896,7 @@ function renderQuiz() {
       var col = scoreColor(h.score);
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:' + (i<4?'1px solid var(--brd)':'none') + ';font-family:var(--sans);font-size:13px">'
            + '<div style="width:4px;height:28px;border-radius:2px;background:' + col + ';flex-shrink:0"></div>'
-           + '<span class="math-rich" style="flex:1;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(h.question) + '</span>'
+           + '<span class="math-rich" style="flex:1;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _mathNormalize(h.question) + '</span>'
            + badge(h.score+'/3', col)
            + '</div>';
     }).join('');
@@ -2813,13 +2977,13 @@ function renderCards() {
       + (fc.topic ? badge(fc.topic, '#4c79f2') : '')
       + (isLeechCard(fc) ? badge('Leech', '#B45309') : '')
       + (isCardSuspended(fc) ? badge('Suspended', '#555149') : '')
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:20px;font-style:italic;text-align:center;line-height:1.6;margin:14px 0 0;max-width:480px">' + esc(fc.front) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:20px;font-style:italic;text-align:center;line-height:1.6;margin:14px 0 0;max-width:480px">' + _mathNormalize(fc.front) + '</p>'
       + '<p style="color:var(--dim);font-family:var(--sans);font-size:12px;margin-top:18px;letter-spacing:.05em;text-transform:uppercase">click to reveal</p>'
       + '</div>'
       + '<div class="fc-back">'
       + (fc.sourceSection ? '<div style="margin-bottom:8px">' + _srcCiteLink(fc.sourceSection) + '</div>' : '')
-      + '<p class="math-rich" style="font-family:var(--sans);font-size:17px;text-align:center;line-height:1.7;max-width:480px">' + esc(fc.back) + '</p>'
-      + (fc.note ? '<p class="math-rich" style="margin-top:14px;font-size:13px;color:var(--mut);font-style:italic;line-height:1.6;text-align:center;max-width:440px;border-top:1px solid var(--brd);padding-top:12px">' + esc(fc.note) + '</p>' : '')
+      + '<p class="math-rich" style="font-family:var(--sans);font-size:17px;text-align:center;line-height:1.7;max-width:480px">' + _mathNormalize(fc.back) + '</p>'
+      + (fc.note ? '<p class="math-rich" style="margin-top:14px;font-size:13px;color:var(--mut);font-style:italic;line-height:1.6;text-align:center;max-width:440px;border-top:1px solid var(--brd);padding-top:12px">' + _mathNormalize(fc.note) + '</p>' : '')
       + '</div>'
       + '</div></div></div>';
   }
@@ -2931,7 +3095,7 @@ function renderMapDetail() {
     + '</div></div>' : '';
 
   var desc = selNode.desc || selNode.description || '';
-  var descHtml = desc ? '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--mut);line-height:1.65;margin-top:8px;font-style:italic">' + esc(desc) + '</p>' : '';
+  var descHtml = desc ? '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--mut);line-height:1.65;margin-top:8px;font-style:italic">' + _mathNormalize(desc) + '</p>' : '';
 
   return '<div class="card math-rich" style="border-left:3px solid '+selCol+';box-shadow:0 12px 30px rgba(0,0,0,.18);margin-bottom:14px">'
     + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'
@@ -3450,7 +3614,7 @@ function renderToday() {
       + (tq.sourceSection ? _srcCiteLink(tq.sourceSection) : '')
       + '<span style="float:right;font-family:var(--sans);font-size:10.5px;color:var(--mut);background:var(--warn-t);padding:2px 8px;border-radius:10px;border:1px solid rgba(180,83,9,.2)">Targeted Q</span>'
       + '</div>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7">' + esc(tq.question) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7">' + _mathNormalize(tq.question) + '</p>'
       + '</div>';
 
     if (S.todayGrading !== null) {
@@ -3461,7 +3625,7 @@ function renderToday() {
         + '<div style="width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 1s ease-in-out infinite;flex-shrink:0"></div>'
         + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em">Grading</span>'
         + '</div>'
-        + '<p id="today-grade-stream" class="math-rich" aria-live="polite" aria-atomic="true" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + esc(prevText || '•••') + '</p>'
+        + '<p id="today-grade-stream" class="math-rich" aria-live="polite" aria-atomic="true" style="font-family:var(--serif);font-size:15px;line-height:1.7;min-height:40px">' + _mathNormalize(prevText || '•••') + '</p>'
         + '</div>';
     } else if (S.todayResult) {
       var tsc = S.todayResult.score;
@@ -3475,18 +3639,18 @@ function renderToday() {
         + '<div class="row" style="margin-bottom:12px">' + tPips
         + '<span style="font-family:var(--sans);font-size:12px;color:' + tcol + ';font-weight:600;margin-left:8px;text-transform:uppercase;letter-spacing:.06em">' + tLabel + '</span>'
         + '</div>'
-        + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;margin-bottom:12px">' + esc(S.todayResult.feedback) + '</p>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.7;margin-bottom:12px">' + _mathNormalize(S.todayResult.feedback) + '</p>'
         + '<div style="padding:10px 14px;background:var(--card);border-radius:7px;border:1px solid var(--brd);margin-bottom:10px">'
         + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Your answer</p>'
-        + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.65">' + esc(S.todayAns || '') + '</p>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.65">' + _mathNormalize(S.todayAns || '') + '</p>'
         + '</div>'
         + '<div style="padding:10px 14px;background:var(--card2);border-radius:7px;border:1px solid var(--brd)">'
         + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Reference answer</p>'
-        + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.65">' + esc(S.todayResult.modelAnswer || '') + '</p>'
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.65">' + _mathNormalize(S.todayResult.modelAnswer || '') + '</p>'
         + '</div>'
         + (S.todayResult.keyIdea ? '<div style="margin-top:10px;padding:10px 14px;background:var(--acc-t);border-radius:7px;border-left:3px solid var(--gold)">'
           + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Key idea</p>'
-          + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.7">' + esc(S.todayResult.keyIdea) + '</p>'
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.7">' + _mathNormalize(S.todayResult.keyIdea) + '</p>'
           + '</div>' : '')
         + '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">'
         + '<button class="btn bp" onclick="todayNextQ()">Continue &rarr;</button>'
@@ -3553,9 +3717,9 @@ function renderToday() {
       + (fc.topic ? badge(fc.topic, '#4c79f2') : '')
       + (fc.sourceSection ? _srcCiteLink(fc.sourceSection) : '')
       + '</div>'
-      + '<p class="math-rich" style="font-family:var(--sans);font-size:15px;font-weight:600;color:var(--mut);margin-bottom:4px">' + esc(fc.front) + '</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:18px;line-height:1.7">' + esc(fc.back) + '</p>'
-      + (fc.note ? '<p class="math-rich" style="margin-top:12px;font-size:13px;color:var(--mut);font-style:italic;line-height:1.6;border-top:1px solid var(--brd);padding-top:10px">' + esc(fc.note) + '</p>' : '')
+      + '<p class="math-rich" style="font-family:var(--sans);font-size:15px;font-weight:600;color:var(--mut);margin-bottom:4px">' + _mathNormalize(fc.front) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:18px;line-height:1.7">' + _mathNormalize(fc.back) + '</p>'
+      + (fc.note ? '<p class="math-rich" style="margin-top:12px;font-size:13px;color:var(--mut);font-style:italic;line-height:1.6;border-top:1px solid var(--brd);padding-top:10px">' + _mathNormalize(fc.note) + '</p>' : '')
       + '</div>'
       + '<div style="display:flex;gap:8px;margin-bottom:14px">'
       + [
@@ -3574,7 +3738,7 @@ function renderToday() {
     // Typed-answer card: text input instead of flip
     cardHTML = '<div class="card" style="margin-bottom:14px">'
       + (fc.topic ? '<div style="margin-bottom:10px">' + badge(fc.topic, '#4c79f2') + (fc.sourceSection ? _srcCiteLink(fc.sourceSection) : '') + '</div>' : '')
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;margin-bottom:14px">' + esc(fc.front) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;margin-bottom:14px">' + _mathNormalize(fc.front) + '</p>'
       + '<input class="inp" id="typed-card-ans" placeholder="Type your answer…" style="margin-bottom:10px" autocomplete="off" onkeydown="if(event.key===\'Enter\')submitTypedCard(' + fc.id + ')">'
       + '<button class="btn bp" onclick="submitTypedCard(' + fc.id + ')">Check</button>'
       + '<button class="btn bg btn-sm" style="margin-left:8px" onclick="S.todayFlipped=true;render()">Reveal instead</button>'
@@ -3586,7 +3750,7 @@ function renderToday() {
       + '<div class="fc-stage" onclick="S.todayFlipped=true;render()">'
       + '<div class="fc-inner"><div class="fc-front">'
       + (fc.topic ? badge(fc.topic, '#4c79f2') : '')
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:20px;font-style:italic;text-align:center;line-height:1.6;margin:14px 0 0;max-width:480px">' + esc(fc.front) + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:20px;font-style:italic;text-align:center;line-height:1.6;margin:14px 0 0;max-width:480px">' + _mathNormalize(fc.front) + '</p>'
       + '<p style="color:var(--dim);font-family:var(--sans);font-size:12px;margin-top:18px;letter-spacing:.05em;text-transform:uppercase">click to reveal</p>'
       + '</div></div></div></div>';
   }
@@ -3749,7 +3913,7 @@ function renderSolve() {
     var steps = (r.steps || []).map(function(s, i) {
       return '<div style="display:flex;gap:11px;margin-bottom:12px">'
         + '<span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#fff;font-family:var(--sans);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">' + (i + 1) + '</span>'
-        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;line-height:1.65;color:var(--tx)">' + esc(s) + '</p></div>';
+        + '<p class="math-rich" style="font-family:var(--serif);font-size:14.5px;line-height:1.65;color:var(--tx)">' + _mathNormalize(s) + '</p></div>';
     }).join('');
     var card = '<div class="card" style="margin-bottom:14px">'
       + '<div class="rowsb" style="margin-bottom:10px"><p style="font-family:var(--sans);font-size:14px;font-weight:700;color:var(--tx)">Worked solution</p>'
@@ -3758,10 +3922,10 @@ function renderSolve() {
       + steps
       + '<div style="padding:12px 14px;background:var(--card2);border:1px solid var(--brd);border-radius:8px;margin:8px 0 10px">'
       + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Answer</p>'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.6;color:var(--tx)">' + esc(r.answer || '') + '</p></div>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.6;color:var(--tx)">' + _mathNormalize(r.answer || '') + '</p></div>'
       + (r.verification ? '<div style="padding:10px 14px;border-left:3px solid var(--acc);background:var(--card)">'
           + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;font-weight:700">Self-check</p>'
-          + '<p class="math-rich" style="font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--mut)">' + esc(r.verification) + '</p></div>' : '')
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--mut)">' + _mathNormalize(r.verification) + '</p></div>' : '')
       + '<button class="btn bg btn-sm" style="margin-top:14px" onclick="addSolveToReview()">+ Add to review deck</button>'
       + '</div>';
     return back + header + card;
@@ -4309,7 +4473,12 @@ function _quantToNumber(s) {
 function _quantNumberCandidates(s) {
   s = String(s == null ? '' : s);
   var normalized = s
-    .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '$1/$2')
+    // \frac/\tfrac/\dfrac -> a/b, accepting BOTH braced {a}{b} and TeX braceless
+    // single-token shorthand (\tfrac13, \tfrac1{10}) — the bank uses both, and
+    // leaving braceless forms unexpanded mangles the expected answer into a bogus
+    // integer (\tfrac13 -> "13"), silently failing correct fraction answers.
+    .replace(/\\(?:dfrac|tfrac|frac)\s*(?:\{([^{}]+)\}|(\d))\s*(?:\{([^{}]+)\}|(\d))/g,
+      function(_m, b1, d1, b2, d2) { return (b1 || d1) + '/' + (b2 || d2); })
     .replace(/\\%/g, '%')
     .replace(/\$/g, ' ');
   var zones = [];
@@ -4470,25 +4639,54 @@ function parseQuantBank(text) {
   return rows;
 }
 
-// Weighted next-item pick: unseen first, missed resurface more, mastered (2+
-// correct in a row) fade out; never repeat the immediately-previous item.
+// Weighted next-item pick. Two layers:
+//   1. Show every item ONCE before repeating any — restrict the draw to items not
+//      yet shown *this session* (st.sessionSeen) while any remain. This is what
+//      stops "why am I seeing this again" mid-drill; only after the whole (filtered)
+//      pool is exhausted does it recycle.
+//   2. Within that set, weight by history: never-attempted (ever) first, missed
+//      resurface more, mastered (2+ correct streak — carried across sessions via
+//      seeded stats) fade out. Never repeat the immediately-previous item.
 function _quantPickNext(sess) {
   var items = sess.items, n = items.length;
   if (n <= 1) return 0;
+  var stats = sess.stats || {};
+  var unseenPool = false;
+  for (var k = 0; k < n; k++) { if (k !== sess.idx && !(stats[k] && stats[k].sessionSeen)) { unseenPool = true; break; } }
   var weights = items.map(function(_, i) {
-    var st = sess.stats[i] || { seen: 0, wrong: 0, streak: 0 };
-    var w;
-    if (st.seen === 0) w = 2.0;
-    else if (st.streak >= 2) w = 0.25;
-    else w = 1 + st.wrong * 1.5;
-    if (i === sess.idx) w = 0;
-    return w;
+    if (i === sess.idx) return 0;                                  // never immediately-previous
+    var st = stats[i] || { seen: 0, wrong: 0, streak: 0 };
+    if (unseenPool && st.sessionSeen) return 0;                    // hold seen-this-session until pool drains
+    if (st.seen === 0) return 2.0;                                 // never attempted, ever — learn it
+    if (st.streak >= 2) return 0.25;                               // mastered — fade out
+    return 1 + (st.wrong || 0) * 1.5;                              // resurface missed more
   });
   var total = weights.reduce(function(a, b) { return a + b; }, 0);
   if (total <= 0) { return (sess.idx + 1) % n; }
   var r = Math.random() * total;
   for (var i = 0; i < n; i++) { r -= weights[i]; if (r <= 0) return i; }
   return n - 1;
+}
+
+// Stable identity for a bank item so per-question progress survives across drills
+// and bank re-imports (id when the bank has one, else a normalized question stem).
+function _quantItemKey(item) {
+  if (item && item.id != null && String(item.id).trim()) return 'id:' + String(item.id).trim();
+  return 'q:' + _normalizeCloze(String((item && item.q) || '')).slice(0, 80);
+}
+function saveQuantItemStats() { lsSet('sd_quantitemstats', S.quantItemStats); }
+// Record one attempt into the persistent per-question memory. outcome: 'correct'
+// | 'wrong' | 'skip'. Mastery streak grows on correct, breaks otherwise.
+function _recordQuantItemStat(item, outcome) {
+  if (!item) return;
+  var m = S.quantItemStats || (S.quantItemStats = {});
+  var key = _quantItemKey(item);
+  var p = m[key] || (m[key] = { seen: 0, correct: 0, wrong: 0, streak: 0, lastTs: 0 });
+  p.seen++; p.lastTs = Date.now();
+  if (outcome === 'correct') { p.correct++; p.streak = (p.streak || 0) + 1; }
+  else if (outcome === 'wrong') { p.wrong++; p.streak = 0; }
+  else { p.streak = 0; }
+  saveQuantItemStats();
 }
 
 function _fmtMMSS(sec) {
@@ -4773,16 +4971,16 @@ function clearQuantFilter(bankId) {
 var PREP_SCHEDULE = [
   { n: 1,  start: '2026-06-15', label: 'Probability Core & Expected Value',          topics: ['Probability', 'Expected Value'], res: 'Green Book ch.2–3 · Blitzstein–Hwang ch.1–4 · PB:Probability' },
   { n: 2,  start: '2026-06-22', label: 'Combinatorics & Brainteasers',               topics: ['Combinatorics', 'Brainteaser'], res: 'Mosteller · Joshi (Quant Job Q&A) · PB:Combinatorics/Brainteaser' },
-  { n: 3,  start: '2026-06-29', label: 'Mental Math, Sequences & Estimation',        topics: ['Sequences'], res: 'Secrets of Mental Math · Zetamac + tradermath · Optiver 80-in-8 · PB:Sequences · Guesstimation' },
+  { n: 3,  start: '2026-06-29', label: 'Mental Math, Sequences & Estimation',        topics: ['Sequences'], res: 'MENTAL_MATH_TRAINING.md ramp (technique stack + gates) · Zetamac + tradermath · Optiver 80-in-8 · PB:Sequences · Guesstimation' },
   { n: 4,  start: '2026-07-06', label: 'Markov Chains, States & Python',             topics: ['Markov Chains'], res: 'Norris · PB:Markov · verify with Monte-Carlo' },
   { n: 5,  start: '2026-07-13', label: 'Statistics & Inference',                     topics: ['Statistics'], res: 'MIT 18.05 · Blitzstein ch.5–8 · PB:Statistics' },
   { n: 6,  start: '2026-07-20', label: 'Random Walks, Martingales & Game Theory',    topics: ['Game Theory', 'Market Making', 'Markov Chains'], res: 'PB:GameTheory/MM · Figgie · poker/betting EV' },
   { n: 7,  start: '2026-07-27', label: 'Options, Greeks & Market-Making',            topics: ['Options', 'Market Making'], res: 'Natenberg · Hull ch.9–19 · PB:Options/MM' },
-  { n: 8,  start: '2026-08-03', label: 'Integration & Mixed Timed Sets',             topics: [], difficulty: 'Hard', res: 'PB mixed Hard (cross-source) · timed sets · PuzzledQuant' },
-  { n: 9,  start: '2026-08-10', label: 'Firm-Specific Prep + Apply',                 topics: [], firm: true, res: 'Glassdoor (your target firms) · PuzzledQuant firm tags · firm guides · IMC Prosperity guide' },
-  { n: 10, start: '2026-08-17', label: 'Mock Interviews ×3',                         topics: [], difficulty: 'Hard', res: 'Recorded mocks (peer/Pramp) · PuzzledQuant · weak-topic drills' },
-  { n: 11, start: '2026-08-24', label: 'Mocks + Application Push',                   topics: [], res: 'More mocks · submit remaining apps · mental-math maintenance' },
-  { n: 12, start: '2026-08-31', label: 'Superday Polish & Behavioral',              topics: [], res: 'Behavioral / "why this firm" · light mixed reps · rest before superdays' },
+  { n: 8,  start: '2026-08-03', label: 'Integration & Mixed Timed Sets',             topics: [], difficulty: 'Hard', res: 'PB mixed Hard (cross-source) · timed sets · PuzzledQuant · first superday sim: all 4 rounds in Mock Interviews/MOCK_SCRIPTS.md' },
+  { n: 9,  start: '2026-08-10', label: 'Firm-Specific Prep + Apply',                 topics: [], firm: true, res: 'Mock Interviews/PIPELINE_GUIDE.md firm maps · Applications/Quant_Application_Tracker.xlsx sweep + apply · Glassdoor + PuzzledQuant firm tags · IMC Prosperity guide' },
+  { n: 10, start: '2026-08-17', label: 'Mock Interviews ×3',                         topics: [], difficulty: 'Hard', res: 'MOCK_SCRIPTS.md rotation, recorded + rubric-logged · PuzzledQuant · weak-topic drills' },
+  { n: 11, start: '2026-08-24', label: 'Mocks + Application Push',                   topics: [], res: 'More mocks (MOCK_SCRIPTS.md) · submit remaining apps (Quant_Application_Tracker.xlsx) · mental-math maintenance (MENTAL_MATH_TRAINING.md §3)' },
+  { n: 12, start: '2026-08-31', label: 'Superday Polish & Behavioral',              topics: [], res: 'BEHAVIORAL_BANK.md + INTERVIEW_COUNTDOWN.md T-minus playbooks · light mixed reps · rest before superdays' },
 ];
 var PREP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function _prepMs(s) { var p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
@@ -4798,11 +4996,133 @@ function _prepToday() {
   for (var i = 0; i < PREP_SCHEDULE.length; i++) { if (now >= _prepMs(PREP_SCHEDULE[i].start)) cur = PREP_SCHEDULE[i]; }
   return { state: 'active', week: cur };
 }
+// The week the prep card is focused on: the user-picked one (revisit/catch up on
+// a week you missed), else the real current week. _prepToday() stays the true
+// calendar position (assistant, checkpoints, speed targets read that); only the
+// focus panel + "drill this week" follow the selection.
+function _prepViewWeek() {
+  if (S.prepWeekView != null) {
+    for (var i = 0; i < PREP_SCHEDULE.length; i++) { if (PREP_SCHEDULE[i].n === S.prepWeekView) return PREP_SCHEDULE[i]; }
+  }
+  var t = _prepToday();
+  return t.week || PREP_SCHEDULE[0];
+}
+function setPrepWeek(v) {
+  S.prepWeekView = (v === 'auto' || v == null || v === '') ? null : (parseInt(v, 10) || null);
+  render();
+}
+// ── Next-interview countdown (T-minus playbook suggestion) ───────────────────
+// Mirrors Quant Prep/Mock Interviews/INTERVIEW_COUNTDOWN.md — the playbook rows
+// are condensed here so the prep card can suggest the right protocol for the
+// horizon. The .md file stays the authoritative long form.
+function _prepPlaybooks() {
+  return {
+    oa: { label: 'Mental-math / sequences OA', rows: [
+      { d: 3, focus: 'Daily overload: one 80-in-8 clone run + hard-config Zetamac + a SEQ timed set. Misses → cards same day.' },
+      { d: 1, focus: 'Confirm format (European “:” division? ±1 scoring? sequences/cognitive games?). One genre practice run, then sleep.' },
+      { d: 0, focus: 'Warm up 10–30 min before (1–2 Zetamac runs). Skip rule armed: >10s → skip on ±1 scoring. Accuracy floor 90%.' },
+    ]},
+    oab: { label: 'Quant OA battery (Optiver-style)', rows: [
+      { d: 5, focus: 'Cover the blind spots first: arbitrage/orderbooks reps + Fermi Intervals (calibrate 90% ranges — start too narrow, widen). Baseline Zetamac. Log every session.' },
+      { d: 3, focus: 'Probability core under a clock (45s skip rule) + likelihood ranking (order, not exact) + daily Zetamac. Re-drill misses first.' },
+      { d: 1, focus: 'FULL dress rehearsal: all modules back-to-back, quiet room, laptop+mouse. Log the weakest module — one day to patch it. No new material.' },
+      { d: 0, focus: 'Warm up 15–20 min (Zetamac + 2 Fermi + 1 arb). Intervals: widen when unsure. Skip rule armed on per-Q timers. Sleep-rewards the neuro games. Log the sit.' },
+    ]},
+    phone: { label: 'Probability phone screen', rows: [
+      { d: 7, focus: 'Firm-tag drill daily (Medium→Hard), method spoken aloud. Quant_Themes cue→move retrieval.' },
+      { d: 3, focus: 'Run Mock 1 (MOCK_SCRIPTS.md), recorded + rubric-logged. Prove the method, defend edge cases.' },
+      { d: 1, focus: 'Re-attempt the last 2 weeks of misses cold. One EV/Markov Hard set. No new material.' },
+      { d: 0, focus: '2 warm-up problems ~30 min before (one EV, one conditional probability).' },
+    ]},
+    mm: { label: 'Market-making / game round', rows: [
+      { d: 7, focus: 'Figgie daily (≥2 games) + the MM-* bank set end-to-end: fair value → spread ∝ uncertainty → skew, aloud.' },
+      { d: 4, focus: 'Run Mock 2 (and Mock 3 if Jane Street). Keep the written blotter — position/P&L on demand is graded.' },
+      { d: 2, focus: 'One estimation-market rep. Review failure modes: frozen quote, no inventory skew, no adverse-selection widening.' },
+      { d: 0, focus: 'One Figgie game as warm-up. Paper + pen ready for the blotter.' },
+    ]},
+    superday: { label: 'Superday / final round', rows: [
+      { d: 7, focus: 'Superday sim: all four MOCK_SCRIPTS.md rounds back-to-back, recorded. Weakest rubric axis → daily block.' },
+      { d: 3, focus: 'BEHAVIORAL_BANK.md: 5 STAR stories aloud + firm-specific “why <firm>”. Refresh market awareness (SPX/10Y/VIX).' },
+      { d: 1, focus: 'Taper: one Zetamac warm-up, light reps, logistics, sleep. Day-before cramming is negative-EV.' },
+      { d: 0, focus: 'Zetamac warm-up + one easy problem. Between rounds: reset, don’t post-mortem.' },
+    ]},
+  };
+}
+// Pure: ({date,firm,stage}, nowMs) → {days, label, focus, far, stale} | null.
+// days counts calendar days until the date (0 = today). Beyond the playbook's
+// longest horizon, `far` is true and focus falls back to the standing loop.
+function _prepCountdown(ni, nowMs) {
+  if (!ni || !ni.date) return null;
+  var days = Math.round((_prepMs(ni.date) - _prepMs(new Date(nowMs).toISOString().slice(0, 10))) / 864e5);
+  var pbs = _prepPlaybooks();
+  var pb = pbs[ni.stage] || pbs.phone;
+  if (days < 0) return { days: days, label: pb.label, stale: true, far: false, focus: 'Date passed — run the post-round debrief (questions → bank/cards, update PIPELINE_GUIDE + tracker), then clear or set the next one.' };
+  var maxD = pb.rows[0].d;
+  if (days > maxD) return { days: days, label: pb.label, stale: false, far: true, focus: 'Playbook starts at T-' + maxD + ' — until then: the daily loop + weekly mock. See INTERVIEW_COUNTDOWN.md.' };
+  var row = pb.rows[0];
+  for (var i = 0; i < pb.rows.length; i++) { if (days <= pb.rows[i].d) row = pb.rows[i]; }
+  return { days: days, label: pb.label, stale: false, far: false, focus: row.focus };
+}
+function saveNextInterview() { lsSet('sd_nextinterview', S.nextInterview); }
+function setNextInterview() {
+  var d = (document.getElementById('ni-date') || {}).value || '';
+  var f = ((document.getElementById('ni-firm') || {}).value || '').trim();
+  var st = (document.getElementById('ni-stage') || {}).value || 'phone';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { toast('Pick a date first — the playbook keys off it.'); return; }
+  S.nextInterview = { date: d, firm: f, stage: st };
+  saveNextInterview(); render();
+}
+function clearNextInterview() { S.nextInterview = null; S.examFeedback = ''; saveNextInterview(); render(); }
+// Build the AI exam-readiness context: the assessment + the user's actual logged
+// scores + drill perf + standing targets. Pure/testable (no DOM, no network).
+function _examContext(nowMs) {
+  var ni = S.nextInterview;
+  if (!ni) return '';
+  var cd = _prepCountdown(ni, nowMs), t = _prepToday(), wk = (t.week && t.week.n) || 1;
+  var sp = _speedPerf(), perf = _prepPerf(), lines = [];
+  lines.push('ASSESSMENT: ' + (ni.firm ? ni.firm + ' — ' : '') + cd.label + (ni.date ? ' on ' + ni.date : '')
+    + (cd.stale ? ' (date passed)' : cd.days === 0 ? ' (TODAY)' : ' (T-' + cd.days + ')') + '.');
+  lines.push('PLAYBOOK FOCUS NOW: ' + cd.focus);
+  var spBits = SPEED_TYPES.map(function (s) {
+    var b = sp[s.key], tgt = _speedTarget(s.key, wk);
+    if (!b) return s.label + '=none';
+    return s.label + '=' + b.last + (tgt != null ? '/' + tgt : '');
+  });
+  lines.push('SPEED SCORES (latest/target): ' + spBits.join(', ') + '.');
+  if (perf.sessions) {
+    lines.push('DRILL PERF: ' + perf.sessions + ' sessions'
+      + (perf.overallAcc != null ? ', ' + perf.overallAcc + '% overall' : '')
+      + (perf.daysSince != null ? ', last ' + perf.daysSince + 'd ago' : '') + '.');
+    var weak = Object.keys(perf.topics).map(function (tp) { return { tp: tp, acc: perf.topics[tp].acc, n: perf.topics[tp].seen }; })
+      .filter(function (x) { return x.acc != null && x.n >= 8 && x.acc < 70 && x.tp !== '(untagged)'; })
+      .sort(function (a, b) { return a.acc - b.acc; }).slice(0, 4);
+    if (weak.length) lines.push('WEAK TOPICS: ' + weak.map(function (x) { return x.tp + ' ' + x.acc + '% (' + x.n + ')'; }).join(', ') + '.');
+  } else {
+    lines.push('DRILL PERF: none logged in-app yet.');
+  }
+  lines.push('STANDING TARGETS: Zetamac 45+; Optiver 80-in-8 ≥56 (elite 70); probability drills ≥80% on attempted under a per-question timer; Fermi/Intervals ~90% of ranges contain the truth while staying tight; arbitrage/orderbooks ≥80% with no false arbs.');
+  return lines.join('\n');
+}
+async function askExamFeedback() {
+  if (!S.nextInterview) { toast('Set your next assessment first (the countdown form above).'); return; }
+  if (S.examFeedbackBusy) return;
+  S.examFeedbackBusy = true; S.examFeedback = ''; render();
+  try {
+    var sys = 'You are a sharp, honest quant-trading interview coach. Given a scheduled assessment, the candidate\'s actual logged scores, drill performance, and the standing targets, give a short readiness read: (1) one line on where they stand vs targets, (2) the 2–3 highest-leverage things to do before the assessment, (3) one calibration/test-day reminder specific to the format. Be concrete and brief (under 180 words). No preamble, no restating the data back.';
+    var out = await callAI(sys, _examContext(Date.now()), 700, 0.4, undefined, 'generation');
+    S.examFeedback = String(out || '').trim() || '(no response)';
+  } catch (e) {
+    S.examFeedback = 'AI unavailable: ' + (e && e.message ? e.message : 'unknown') + '. Add a key in Settings, or lean on the deterministic Assistant above (no key needed).';
+  } finally {
+    S.examFeedbackBusy = false; render();
+  }
+}
 // ── Speed & live-game logging (the metrics that gate trading rounds) ─────────
 var SPEED_TYPES = [
-  { key: 'zetamac', label: 'Zetamac /2min' },
-  { key: 'optiver', label: 'Optiver 80-in-8' },
-  { key: 'figgie',  label: 'Figgie (net)' },
+  { key: 'zetamac',    label: 'Zetamac /2min' },
+  { key: 'optiver',    label: 'Optiver 80-in-8' },
+  { key: 'tradermath', label: 'Tradermath /set' },
+  { key: 'figgie',     label: 'Figgie (net)' },
 ];
 function _speedTarget(kind, weekN) {
   weekN = weekN || 1;
@@ -4822,6 +5142,58 @@ function logSpeedScore(kind, val) {
   render();
 }
 function saveSpeedLog() { lsSet('sd_speedlog', S.speedLog); }
+// ── Weekly checkpoints (the cold read that tests whether a week actually stuck) ─
+// A checkpoint = one logged record per ISO calendar week: this week's drill
+// accuracy (auto-read from S.quantLog) + an optional one-line reflection. This is
+// what turns the roadmap's "weekend cold checkpoint" from a reminder into a tracked,
+// reviewable signal that gates moving on. Pure helpers stay top-level (unit-tested).
+function _isoWeekKey(d) {
+  var dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  var day = dt.getUTCDay() || 7;               // Mon=1 … Sun=7
+  dt.setUTCDate(dt.getUTCDate() + 4 - day);    // shift to the week's Thursday
+  var yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  var wk = Math.ceil((((dt - yearStart) / 864e5) + 1) / 7);
+  return dt.getUTCFullYear() + '-W' + (wk < 10 ? '0' : '') + wk;
+}
+// Aggregate this ISO week's drilled accuracy from the session log — the number the
+// checkpoint records as the week's cold read.
+function _weekDrillAcc(quantLog, weekKey) {
+  var answered = 0, correct = 0;
+  (quantLog || []).forEach(function (s) {
+    if (_isoWeekKey(new Date(s.ts || 0)) !== weekKey) return;
+    answered += s.answered || 0; correct += s.correct || 0;
+  });
+  return { answered: answered, correct: correct, acc: answered ? Math.round(correct / answered * 100) : null };
+}
+// Current checkpoint state: is this week logged, what's the live drill read so far,
+// and a short history for the trend line.
+function _checkpointStatus(now) {
+  now = now || new Date();
+  var key = _isoWeekKey(now);
+  var log = S.checkpointLog || [];
+  var done = null;
+  for (var i = 0; i < log.length; i++) if (log[i].week === key) done = log[i];
+  var live = _weekDrillAcc(S.quantLog, key);
+  return { week: key, done: done, live: live, history: log.slice(-6) };
+}
+function saveCheckpointLog() { lsSet('sd_checkpointlog', S.checkpointLog); }
+// Record (or overwrite) this week's checkpoint. Accuracy is auto-read from the
+// week's drills; the reflection is the user's one-line cold-read note.
+function logCheckpoint() {
+  var el = document.getElementById('checkpoint-note');
+  var note = (el && el.value.trim()) || '';
+  var st = _checkpointStatus(), t = _prepToday();
+  if (st.live.answered < 1) { toast('Run at least one drill this week first — the checkpoint records the week’s cold accuracy.'); return; }
+  S.checkpointLog = (S.checkpointLog || []).filter(function (c) { return c.week !== st.week; });
+  S.checkpointLog.push({
+    week: st.week, ts: Date.now(), acc: st.live.acc, answered: st.live.answered,
+    label: (t.week ? 'Wk ' + t.week.n + ' · ' + t.week.label : 'Maintenance'), note: note,
+  });
+  if (S.checkpointLog.length > 60) S.checkpointLog = S.checkpointLog.slice(-60);
+  saveCheckpointLog();
+  toast('Checkpoint logged for ' + st.week + ' — ' + (st.live.acc != null ? st.live.acc + '% this week.' : 'noted.'));
+  render();
+}
 function _speedPerf() {
   var by = {};
   (S.speedLog || []).forEach(function (e) {
@@ -4916,6 +5288,44 @@ function _quantSessionBreakdown(attempts) {
     if (a.confidence === 'sure') { sureTotal++; if (!a.correct) sureWrong++; }
   });
   return { topics: topics, sureWrong: sureWrong, sureTotal: sureTotal };
+}
+
+// Flatten S.quantLog sessions into flat history/export rows (oldest first).
+// Pure over the log so it can be unit-tested and reused by the history card,
+// the CSV export, and the JSON export alike.
+function _quantHistoryRows(log) {
+  return (log || []).map(function(s) {
+    var answered = s.answered || 0;
+    return {
+      ts: s.ts || 0,
+      date: s.ts ? new Date(s.ts).toISOString() : '',
+      bank: s.bank || '',
+      topic: (s.scope && s.scope.topic) || '',
+      difficulty: (s.scope && s.scope.difficulty) || '',
+      answered: answered,
+      correct: s.correct || 0,
+      accuracy: answered ? Math.round((s.correct || 0) / answered * 100) : null,
+      skipped: s.skipped || 0,
+      qpm: s.qpm || 0,
+      avgSec: s.avgSec || 0,
+    };
+  });
+}
+
+// Quote a CSV cell when it contains a comma, quote, or newline (RFC 4180).
+function _csvCell(v) {
+  var s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Serialize the drill log to CSV for a study journal / spreadsheet.
+function _quantHistoryCSV(log) {
+  var cols = ['date', 'bank', 'topic', 'difficulty', 'answered', 'correct', 'accuracy', 'skipped', 'qpm', 'avgSec'];
+  var lines = [cols.join(',')];
+  _quantHistoryRows(log).forEach(function(r) {
+    lines.push(cols.map(function(c) { return _csvCell(r[c]); }).join(','));
+  });
+  return lines.join('\n');
 }
 
 function _quantRecommendation() {
@@ -5051,6 +5461,16 @@ function renderQuantNewTheme() {
 // Turn schedule position + drill performance into recommendations and pivots.
 function _prepAssess() {
   var t = _prepToday(), w = t.week, perf = _prepPerf(), recs = [], pivots = [];
+  // Exam-aware: a scheduled assessment (countdown) takes the top of the assistant.
+  var _cd = S.nextInterview ? _prepCountdown(S.nextInterview, Date.now()) : null;
+  if (_cd && !_cd.far) {
+    var _who = (S.nextInterview.firm ? S.nextInterview.firm + ' ' : '') + _cd.label;
+    if (_cd.stale) pivots.unshift(_who + ' date passed — run the debrief (questions → bank/cards), then clear or set the next assessment.');
+    else {
+      var _tt = _cd.days === 0 ? 'TODAY' : 'T-' + _cd.days;
+      (_cd.days <= 1 ? pivots : recs).unshift(_who + ' ' + _tt + ' — ' + _cd.focus + '  ·  log each session in the assessment’s SCORE_LOG.md.');
+    }
+  }
   if (perf.sessions === 0) recs.push('No drills logged yet — import your problems.json bank below, then “Drill this week’s focus” to start tracking.');
   else if (perf.daysSince !== null && perf.daysSince >= 2) pivots.push('No drill in ' + perf.daysSince + ' days — momentum matters; run a quick set today.');
   var weak = Object.keys(perf.topics).map(function (tp) { return { tp: tp, acc: perf.topics[tp].acc, n: perf.topics[tp].seen }; })
@@ -5091,8 +5511,52 @@ function renderPrepToday() {
     return '<span style="font-family:var(--sans);font-size:11px;font-weight:600;color:' + (col || 'var(--acc)')
       + ';background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:2px 9px">' + esc(txt) + '</span>';
   };
-  var daily = '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin-top:11px;line-height:1.6">'
-    + '<b style="color:var(--tx)">Every day:</b> Zetamac + a Figgie / trader-math speed round · one fresh firm-tagged question (PuzzledQuant / Glassdoor) · this week’s drill below.</p>';
+  var extLink = function (nm, url) {
+    return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:var(--acc);font-weight:600;text-decoration:none">' + nm + ' ↗</a>';
+  };
+  var daily = '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--brd)">'
+    + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Daily protocol</p>'
+    + '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin:2px 0;line-height:1.7">'
+    + '<b style="color:var(--tx)">①</b> Warm-up — ' + extLink('Zetamac', 'https://arithmetic.zetamac.com/') + ' + ' + extLink('Figgie', 'https://www.figgie.com/') + ' → log scores below &nbsp;·&nbsp; '
+    + '<b style="color:var(--tx)">②</b> Timed set — “Drill this week’s focus” above (firm-tag filter instead while a countdown is live) &nbsp;·&nbsp; '
+    + '<b style="color:var(--tx)">③</b> One fresh firm-tagged question — ' + extLink('PuzzledQuant', 'https://puzzledquant.com/') + ' / ' + extLink('Glassdoor', 'https://www.glassdoor.com/Interview/index.htm') + ' &nbsp;·&nbsp; '
+    + '<b style="color:var(--tx)">④</b> Grade &amp; log — misses become review cards.</p></div>';
+  var countdownPanel = function () {
+    var ni = S.nextInterview;
+    if (!ni) {
+      return '<div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--brd)">'
+        + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:7px"><b style="color:var(--tx)">Next interview</b> <span style="color:var(--dim)">— none set. Set it and this card suggests the right T-minus playbook (INTERVIEW_COUNTDOWN.md).</span></p>'
+        + '<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">'
+        + '<input class="inp" id="ni-date" type="date" style="width:auto;height:30px;padding:2px 8px;font-size:12px" aria-label="Interview date">'
+        + '<input class="inp" id="ni-firm" placeholder="firm" style="width:110px;height:30px;padding:2px 8px;font-size:12px" aria-label="Firm">'
+        + '<select class="inp" id="ni-stage" style="width:auto;height:30px;padding:2px 8px;font-size:12px" aria-label="Round type">'
+        + '<option value="oa">Mental-math / sequences OA</option>'
+        + '<option value="oab">Quant OA battery (Optiver-style)</option>'
+        + '<option value="phone" selected>Probability phone screen</option>'
+        + '<option value="mm">Market-making / game round</option>'
+        + '<option value="superday">Superday / final</option></select>'
+        + '<button class="btn bg btn-sm" style="padding:4px 11px" onclick="setNextInterview()">Set</button>'
+        + '</div></div>';
+    }
+    var cd = _prepCountdown(ni, Date.now());
+    var hot = !cd.stale && !cd.far && cd.days <= 7;
+    var col = cd.stale ? '#d05555' : cd.days <= 1 ? '#d05555' : hot ? 'var(--gold)' : 'var(--acc)';
+    var tTxt = cd.stale ? 'passed' : cd.days === 0 ? 'TODAY' : 'T-' + cd.days;
+    return '<div style="margin-top:11px;padding-top:9px;border-top:1px solid ' + (hot ? 'var(--gold)' : 'var(--brd)') + '">'
+      + '<div class="rowsb" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin:0"><b style="color:var(--tx)">Next interview</b> &nbsp;'
+      + (ni.firm ? esc(ni.firm) + ' · ' : '') + esc(cd.label)
+      + ' &nbsp;<span style="font-weight:800;color:' + col + '">' + tTxt + '</span></p>'
+      + '<button class="btn bno btn-sm" style="padding:2px 9px;font-size:11px" onclick="clearNextInterview()">Clear</button></div>'
+      + '<p style="font-family:var(--sans);font-size:12px;color:var(--tx);margin:0;line-height:1.55">→ ' + esc(cd.focus) + '</p>'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--dim);margin-top:4px">Where to log: the assessment’s <b style="color:var(--mut)">SCORE_LOG.md</b> in Quant Prep + your speed scores below · full playbook: Mock Interviews/INTERVIEW_COUNTDOWN.md · T-tasks via /task</p>'
+      + '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      + '<button class="btn bp btn-sm" style="padding:4px 11px" onclick="askExamFeedback()"' + (S.examFeedbackBusy ? ' disabled' : '') + '>' + (S.examFeedbackBusy ? 'Reading your scores…' : '🎯 Ask AI — exam readiness') + '</button>'
+      + '<span style="font-family:var(--sans);font-size:10px;color:var(--dim)">context: your logged speed scores + drill perf + targets</span>'
+      + '</div>'
+      + (S.examFeedback ? '<div style="margin-top:8px;padding:9px 11px;background:var(--card2);border:1px solid var(--brd);border-radius:8px;font-family:var(--sans);font-size:12px;color:var(--tx);line-height:1.6;white-space:pre-wrap">' + esc(S.examFeedback) + '</div>' : '')
+      + '</div>';
+  };
   var wrap = function (inner) { return '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--acc)">' + inner + '</div>'; };
   var resLine = function (res) { return res ? '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin:2px 0 10px;line-height:1.55"><b style="color:var(--tx)">Use this week:</b> ' + esc(res) + '</p>' : ''; };
   var assess = function () {
@@ -5124,23 +5588,67 @@ function renderPrepToday() {
       + '<button class="btn bg btn-sm" style="padding:4px 11px;color:var(--acc);border-color:var(--acc-b)" onclick="openTracker()">Log in 26X Tracker ↗</button>'
       + '</div></div>';
   };
+  var checkpointPanel = function () {
+    var st = _checkpointStatus();
+    var head = '<b style="color:var(--tx)">Weekly checkpoint</b> <span style="color:var(--dim)">' + esc(st.week) + '</span>';
+    var body;
+    if (st.done) {
+      var hist = st.history.map(function (c) {
+        var col = c.acc == null ? 'var(--dim)' : (c.acc >= 75 ? '#49c47e' : c.acc >= 60 ? 'var(--gold)' : '#d05555');
+        return '<span title="' + esc(c.week + (c.note ? ' — ' + c.note : '')) + '" style="color:' + col + ';font-weight:700">' + (c.acc == null ? '–' : c.acc + '%') + '</span>';
+      }).join(' <span style="color:var(--dim)">·</span> ');
+      body = '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin:0">✓ Logged this week — '
+        + '<b style="color:' + (st.done.acc >= 75 ? '#49c47e' : st.done.acc >= 60 ? 'var(--gold)' : '#d05555') + '">' + (st.done.acc == null ? 'noted' : st.done.acc + '%') + '</b>'
+        + (st.done.note ? ' <span style="color:var(--dim)">— ' + esc(st.done.note) + '</span>' : '')
+        + '</p><p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin-top:5px">Recent: ' + hist + '</p>';
+    } else {
+      var live = st.live.answered
+        ? 'This week so far: <b style="color:var(--tx)">' + (st.live.acc == null ? '—' : st.live.acc + '%') + '</b> over ' + st.live.answered + ' drilled.'
+        : '<span style="color:var(--dim)">Run a cold drill this week, then log the read.</span>';
+      body = '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin:0 0 7px">' + live + '</p>'
+        + '<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">'
+        + '<input class="inp" id="checkpoint-note" placeholder="One-line cold read: what held up / what slipped" style="flex:1;min-width:150px;height:30px;padding:2px 8px;font-size:12px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();logCheckpoint();}">'
+        + '<button class="btn bp btn-sm" style="padding:4px 11px" onclick="logCheckpoint()">Log checkpoint</button>'
+        + '</div>';
+    }
+    return '<div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--brd)">'
+      + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:7px">' + head + '</p>' + body + '</div>';
+  };
   if (t.state === 'pre')
-    return wrap('<p class="sh" style="margin-bottom:6px">Prep plan</p><p style="font-family:var(--sans);font-size:13px;color:var(--tx)">Program starts <b>15 Jun 2026</b> — Week 1: ' + esc(PREP_SCHEDULE[0].label) + '. Warm up with mental-math + Figgie until then.</p>' + resLine(PREP_SCHEDULE[0].res) + speedPanel() + assess() + daily);
+    return wrap('<p class="sh" style="margin-bottom:6px">Prep plan</p><p style="font-family:var(--sans);font-size:13px;color:var(--tx)">Program starts <b>15 Jun 2026</b> — Week 1: ' + esc(PREP_SCHEDULE[0].label) + '. Warm up with mental-math + Figgie until then.</p>' + resLine(PREP_SCHEDULE[0].res) + countdownPanel() + speedPanel() + checkpointPanel() + assess() + daily);
   if (t.state === 'post')
     return wrap('<p class="sh" style="margin-bottom:6px">Prep plan — maintenance</p><p style="font-family:var(--sans);font-size:13px;color:var(--tx)">12-week plan complete. Keep mixed <b>Hard</b> drills + daily speed + fresh questions warm for superdays.</p>'
-      + '<div class="row" style="gap:8px;margin:10px 0"><button class="btn bp btn-sm" onclick="startPrepDrill()">Drill mixed Hard →</button></div>' + speedPanel() + assess() + daily);
-  var w = t.week;
+      + '<div class="row" style="gap:8px;margin:10px 0"><button class="btn bp btn-sm" onclick="startPrepDrill()">Drill mixed Hard →</button></div>' + countdownPanel() + speedPanel() + checkpointPanel() + assess() + daily);
+  var curN = (t.week && t.week.n) || 0;
+  var w = _prepViewWeek();                 // focus follows the week selector (revisit past weeks)
+  var offCurrent = w.n !== curN;
   var chips = (w.topics || []).map(function (x) { return chip(x); }).join(' ');
   if (w.difficulty) chips += ' ' + chip(w.difficulty + ' · mixed', 'var(--gold)');
   if (w.firm) chips += ' ' + chip('filter by target firm', 'var(--mut)');
+  // Week picker — drill/revisit any week (earlier ones you missed, or peek ahead).
+  var weekOpts = PREP_SCHEDULE.map(function (x) {
+    return '<option value="' + x.n + '"' + (x.n === w.n ? ' selected' : '') + '>Week ' + x.n
+      + (x.n === curN ? ' (current)' : '') + ' — ' + esc(x.label) + '</option>';
+  }).join('');
+  var weekPicker = '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
+    + '<select class="inp" id="prep-week-select" style="width:auto;max-width:100%;height:30px;padding:2px 8px;font-size:12px" '
+    + 'onchange="setPrepWeek(this.value)" aria-label="Choose which roadmap week to focus on">'
+    + '<option value="auto"' + (offCurrent ? '' : ' selected') + '>Current week (auto)</option>' + weekOpts + '</select>'
+    + (offCurrent ? '<button class="btn bg btn-sm" style="padding:4px 10px;font-size:11px;color:var(--acc);border-color:var(--acc-b)" onclick="setPrepWeek(\'auto\')">↺ Back to current</button>' : '')
+    + '</div>';
   return wrap(
-    '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">Today’s prep — Week ' + w.n + ' of 12</p>'
+    '<div class="rowsb" style="margin-bottom:8px"><p class="sh" style="margin:0">'
+    + (offCurrent ? 'Revisiting — Week ' + w.n + ' of 12' : 'Today’s prep — Week ' + w.n + ' of 12') + '</p>'
     + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut)">' + esc(_prepRange(w)) + '</span></div>'
+    + weekPicker
+    + (offCurrent ? '<p style="font-family:var(--sans);font-size:11px;color:var(--gold);margin:-4px 0 8px">Catch-up mode — you’re actually in Week ' + curN + '. Drilling this earlier focus to fill gaps.</p>' : '')
     + '<p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx);margin-bottom:9px">' + esc(w.label) + '</p>'
     + (chips ? '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:9px">' + chips + '</div>' : '')
     + resLine(w.res)
-    + '<button class="btn bp btn-sm" onclick="startPrepDrill()">Drill this week’s focus →</button>'
+    + '<button class="btn bp btn-sm" onclick="startPrepDrill()">Drill ' + (offCurrent ? 'Week ' + w.n + '’s' : 'this week’s') + ' focus →</button>'
+    + countdownPanel()
     + speedPanel()
+    + checkpointPanel()
     + assess()
     + daily);
 }
@@ -5148,7 +5656,7 @@ function renderPrepToday() {
 function startPrepDrill() {
   if (!S.quantBanks.length) { toast('Import your problems.json bank below first — then this drills exactly this week’s focus.'); render(); return; }
   var bank = S.quantBanks.slice().sort(function (a, b) { return b.items.length - a.items.length; })[0];
-  var t = _prepToday(), w = t.week, flt = {};
+  var w = _prepViewWeek(), flt = {};   // drills the SELECTED week (revisit past weeks), not just today's
   if (w) {
     if (w.difficulty) flt.difficulty = w.difficulty;
     var topicsInBank = _quantFacetValues(bank, { field: 'topic', list: false, key: 'topic' });
@@ -5176,11 +5684,21 @@ function startQuantDrill(bankId, mode, durationSec) {
     idx: 0, stats: {}, answered: 0, correct: 0, streakCur: 0, streakBest: 0,
     skipped: 0, attempts: [],
     missed: {}, showResult: false, lastResult: null, lastGiven: '', confidence: 'unsure', lastConfidence: 'unsure', aiExplain: null, showHint: false,
+    timeUp: false,
     mode: m,
     startTime: Date.now(),
     itemStartedAt: Date.now(),
     endTime: mode === 'timed' ? Date.now() + (durationSec || 120) * 1000 : null,
   };
+  // Seed per-item stats from persistent cross-session memory so mastery carries
+  // over: previously stats reset every drill, so every question looked "unseen"
+  // again and the picker could never fade out what you already know. sessionSeen
+  // stays 0 (nothing shown YET this session), so each item still appears once.
+  var pstats = S.quantItemStats || {};
+  S.quant.items.forEach(function(it, i) {
+    var p = pstats[_quantItemKey(it)];
+    if (p) S.quant.stats[i] = { seen: p.seen || 0, correct: p.correct || 0, wrong: p.wrong || 0, streak: p.streak || 0, sessionSeen: 0 };
+  });
   if (S.quant.mode === 'timed') _quantTimer = setInterval(_quantTick, 250);
   render();
 }
@@ -5191,11 +5709,25 @@ function _quantTick() {
   var rem = sess.endTime - Date.now();
   var el = document.getElementById('quant-timeleft');
   if (el) el.textContent = _fmtMMSS(rem / 1000);
-  if (rem <= 0) { clearInterval(_quantTimer); _quantTimer = null; endQuantDrill(); }
+  if (rem <= 0) { clearInterval(_quantTimer); _quantTimer = null; _quantTimeUp(); }
+}
+
+// Timed sprints end on a short "time's up" beat instead of jumping straight to
+// the summary: lock input, show the banner, then score. Ending early via the
+// End button while the beat is on-screen is still safe (endQuantDrill guards).
+function _quantTimeUp() {
+  var sess = S.quant;
+  if (!sess || !sess.active || sess.timeUp) return;
+  sess.timeUp = true;
+  render();
+  setTimeout(function() {
+    var s2 = S.quant;
+    if (s2 && s2.active && s2.timeUp) endQuantDrill();
+  }, 1500);
 }
 
 function quantSubmit() {
-  var sess = S.quant; if (!sess || !sess.active) return;
+  var sess = S.quant; if (!sess || !sess.active || sess.timeUp) return;
   var inp = document.getElementById('quant-input');
   var val = inp ? inp.value.trim() : '';
   if (!val) return;
@@ -5206,6 +5738,7 @@ function quantSubmit() {
   var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
   var ms = Math.max(0, Date.now() - (sess.itemStartedAt || Date.now()));
   st.seen++;
+  st.sessionSeen = (st.sessionSeen || 0) + 1; // shown this session → drop from the unseen pool
   st.totalMs = (st.totalMs || 0) + ms;
   st.conf = st.conf || { sure: 0, unsure: 0, guess: 0 };
   st.conf[confidence] = (st.conf[confidence] || 0) + 1;
@@ -5214,6 +5747,7 @@ function quantSubmit() {
     idx: sess.idx, id: item.id || '', topic: item.topic || '(untagged)', difficulty: item.difficulty || '',
     correct: !!res.correct, skipped: false, ms: ms, confidence: confidence, answer: val,
   });
+  _recordQuantItemStat(item, res.correct ? 'correct' : 'wrong'); // persist across sessions
   if (res.correct) {
     st.correct = (st.correct || 0) + 1; // explicit correct count (skips must not count as correct)
     sess.correct++; st.streak++; sess.streakCur++;
@@ -5235,7 +5769,7 @@ function quantSubmit() {
 }
 
 function quantNext() {
-  var sess = S.quant; if (!sess || !sess.active) return;
+  var sess = S.quant; if (!sess || !sess.active || sess.timeUp) return;
   sess.idx = _quantPickNext(sess);
   sess.itemStartedAt = Date.now();
   sess.showResult = false; sess.lastResult = null; sess.lastGiven = ''; sess.aiExplain = null; sess.showHint = false;
@@ -5243,12 +5777,14 @@ function quantNext() {
 }
 
 function quantSkip() {
-  var sess = S.quant; if (!sess || !sess.active) return;
+  var sess = S.quant; if (!sess || !sess.active || sess.timeUp) return;
   var item = sess.items[sess.idx];
   var st = sess.stats[sess.idx] || (sess.stats[sess.idx] = { seen: 0, wrong: 0, streak: 0 });
   var ms = Math.max(0, Date.now() - (sess.itemStartedAt || Date.now()));
   st.seen++; // count as seen so it rotates
+  st.sessionSeen = (st.sessionSeen || 0) + 1; // shown this session → drop from the unseen pool
   st.skips = (st.skips || 0) + 1; st.streak = 0;
+  _recordQuantItemStat(item, 'skip'); // persist across sessions
   sess.skipped = (sess.skipped || 0) + 1; sess.streakCur = 0;
   sess.confidence = 'unsure'; // reset to the default for the next question
   sess.attempts.push({
@@ -5262,7 +5798,7 @@ function quantSkip() {
 }
 
 function quantToggleHint() {
-  var sess = S.quant; if (!sess || !sess.active) return;
+  var sess = S.quant; if (!sess || !sess.active || sess.timeUp) return;
   sess.showHint = !sess.showHint;
   render();
 }
@@ -5325,6 +5861,36 @@ function logQuantSession(sess) {
   saveQuantLog();
 }
 function saveQuantLog() { lsSet('sd_quantlog', S.quantLog); }
+
+// Wipe the drill analytics log — the accuracy/weak-topic/calibration history and
+// every recommendation derived from it. Needed because a past grading bug logged
+// correct answers as wrong, poisoning the analytics; there's no in-place repair,
+// so a clean-slate reset is the honest fix. Banks and per-question progress stay.
+function resetQuantLog() {
+  var n = (S.quantLog || []).length;
+  if (!n) { toast('No drill history to reset.'); return; }
+  if (!confirm('Reset all quant drill analytics?\n\nThis clears ' + n + ' logged session' + (n === 1 ? '' : 's') + ' and the weak-topic, calibration, and recommendation history built on them.\n\nYour problem banks and per-question progress are kept. This cannot be undone.')) return;
+  S.quantLog = [];
+  saveQuantLog();
+  toast('Quant analytics reset — recommendations will rebuild from your next drills.');
+  render();
+}
+
+function toggleQuantHistory() { S.quantHistoryOpen = !S.quantHistoryOpen; render(); }
+
+// Download the drill log as a study journal. Client-side only — a Blob download
+// in the browser; nothing is sent anywhere (same posture as exportBackup).
+function exportQuantLog(fmt) {
+  var log = S.quantLog || [];
+  if (!log.length) { toast('No drill sessions logged yet — finish a drill first.'); return; }
+  var csv = fmt === 'csv';
+  var data = csv ? _quantHistoryCSV(log) : JSON.stringify(log, null, 2);
+  var blob = new Blob([data], { type: csv ? 'text/csv' : 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'studium-quant-log-' + new Date().toISOString().slice(0, 10) + (csv ? '.csv' : '.json');
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
 function exitQuant() {
   if (_quantTimer) { clearInterval(_quantTimer); _quantTimer = null; }
@@ -5530,18 +6096,21 @@ function renderQuantDashboard() {
   };
   var rows = a.topics.slice(0, 6).map(function(r) {
     var col = r.skill >= 80 ? '#49c47e' : r.skill >= 62 ? '#c49a3a' : '#d05555';
+    // Non-color skill cue: the band is words + a number, not just button tint.
+    var band = r.skill >= 80 ? 'strong' : r.skill >= 62 ? 'fair' : 'weak';
     var topicArg = esc(JSON.stringify(r.topic));
     var trend = '';
     if (r.trend != null && Math.abs(r.trend) >= 8) {
       var up = r.trend > 0;
       trend = '<span style="color:' + (up ? '#49c47e' : '#d05555') + ';font-size:10px;margin-left:4px;font-weight:600" title="' + (up ? 'improving' : 'slipping') + ' vs earlier sessions">' + (up ? '▲' : '▼') + Math.abs(r.trend) + '</span>';
     }
-    var grid = '<div style="display:grid;grid-template-columns:minmax(120px,1.4fr) 70px 74px 74px 88px;gap:8px;align-items:center;padding:8px 0 0;font-family:var(--sans);font-size:12px">'
+    var grid = '<div style="display:grid;grid-template-columns:minmax(120px,1.4fr) 70px 74px 92px 74px 88px;gap:8px;align-items:center;padding:8px 0 0;font-family:var(--sans);font-size:12px">'
       + '<span style="color:var(--tx);font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis">' + esc(r.topic) + '</span>'
       + '<span style="color:var(--mut)">' + r.seen + ' reps</span>'
       + '<span style="color:' + (r.acc >= 75 ? '#49c47e' : r.acc >= 60 ? '#c49a3a' : '#d05555') + ';font-weight:700">' + r.acc + '%' + trend + '</span>'
+      + '<span style="color:' + col + ';font-weight:600" title="Skill 0–100 — blends accuracy, pace, confidence, and recency">' + r.skill + ' · ' + band + '</span>'
       + '<span style="color:var(--mut)">' + r.avgSec + 's</span>'
-      + '<button class="btn bg btn-sm" style="padding:4px 9px;color:' + col + ';border-color:var(--brd)" onclick="startQuantWeakTopic(' + topicArg + ')">Repair</button>'
+      + '<button class="btn bg btn-sm" style="padding:4px 9px;color:' + col + ';border-color:var(--brd)" title="Drill this topic in Learn mode (skill ' + r.skill + '/100 — ' + band + ')" onclick="startQuantWeakTopic(' + topicArg + ')">Repair</button>'
       + '</div>';
     var why = r.priorityReason
       ? '<p style="font-family:var(--sans);font-size:10.5px;color:' + (r.urgent ? '#d05555' : 'var(--dim)') + ';margin:1px 0 0;line-height:1.4">' + (r.urgent ? '⚠ ' : '') + esc(r.priorityReason) + '</p>'
@@ -5584,7 +6153,110 @@ function renderQuantDashboard() {
     + '</div>';
 }
 
+// Longitudinal view of S.quantLog: the last sessions as rows, plus CSV/JSON
+// export for a study journal. Collapsed by default so the home stays short.
+function renderQuantHistory() {
+  var log = S.quantLog || [];
+  if (!log.length) return '';
+  var exportBtns = '<div class="row" style="gap:6px;flex-wrap:wrap">'
+    + '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px" onclick="exportQuantLog(\'csv\')" title="Download every logged session as CSV — stays on this machine">Export CSV</button>'
+    + '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px" onclick="exportQuantLog(\'json\')" title="Download the raw session log as JSON — stays on this machine">Export JSON</button>'
+    + '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px" onclick="toggleQuantHistory()" aria-expanded="' + (S.quantHistoryOpen ? 'true' : 'false') + '">' + (S.quantHistoryOpen ? 'Hide' : 'Show') + '</button>'
+    + '<button class="btn bg btn-sm" style="padding:3px 9px;font-size:11px;color:#d05555;border-color:var(--brd)" onclick="resetQuantLog()" title="Clear all logged sessions and the analytics/recommendations built on them. Banks and per-question progress are kept. Use this to wipe history skewed by an old grading bug.">Reset analytics</button>'
+    + '</div>';
+  var body = '';
+  if (S.quantHistoryOpen) {
+    var rows = _quantHistoryRows(log).slice(-15).reverse().map(function(r) {
+      var col = r.accuracy == null ? 'var(--mut)' : r.accuracy >= 75 ? '#49c47e' : r.accuracy >= 50 ? '#c49a3a' : '#d05555';
+      var scope = [r.topic, r.difficulty].filter(Boolean).join(' · ');
+      return '<div style="display:grid;grid-template-columns:64px minmax(90px,1.2fr) minmax(70px,1fr) 58px 64px 62px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--brd);font-family:var(--sans);font-size:12px">'
+        + '<span style="color:var(--mut)">' + (r.ts ? new Date(r.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—') + '</span>'
+        + '<span style="color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.bank || '') + '">' + esc(r.bank || '—') + '</span>'
+        + '<span style="color:var(--mut);overflow:hidden;text-overflow:ellipsis" title="' + esc(scope) + '">' + esc(scope || 'mixed') + '</span>'
+        + '<span style="color:var(--mut)">' + r.correct + '/' + r.answered + '</span>'
+        + '<span style="color:' + col + ';font-weight:700">' + (r.accuracy == null ? '—' : r.accuracy + '%') + '</span>'
+        + '<span style="color:var(--mut)">' + r.qpm + ' q/m</span>'
+        + '</div>';
+    }).join('');
+    body = '<div style="overflow-x:auto;margin-top:10px">' + rows + '</div>'
+      + (log.length > 15 ? '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin-top:8px">Showing the last 15 of ' + log.length + ' sessions — export for the full journal.</p>' : '');
+  }
+  return '<div class="card" style="margin-bottom:16px">'
+    + '<div class="rowsb" style="gap:10px;flex-wrap:wrap;align-items:center">'
+    + '<div><p class="sh" style="margin:0 0 2px">Drill history</p>'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut)">' + log.length + ' session' + (log.length === 1 ? '' : 's') + ' logged locally</p></div>'
+    + exportBtns + '</div>' + body + '</div>';
+}
+
+// External prep resources the bank can't train (speed trainers, the live
+// market-making game, the freshness/firm-tagged layer, mocks). These are named
+// throughout Quant Prep's roadmap (TRADING_PREP_MATERIALS.md §A/§E) but were only
+// ever text — this surfaces them as a one-click launchpad so the daily loop is
+// genuinely self-contained. Links open in a new tab; nothing leaves the machine
+// except the navigation you click.
+var QUANT_LINKS = [
+  { group: 'Speed & mental math (daily)', items: [
+    { name: 'Zetamac', url: 'https://arithmetic.zetamac.com/', note: '2-min arithmetic — log your score below' },
+    { name: 'TraderMath', url: 'https://www.tradermath.org/', note: 'trader arithmetic + brainteasers' },
+    { name: 'Rankyourbrain', url: 'https://rankyourbrain.com/mental-math', note: 'arithmetic drills' },
+    { name: '80-in-8 (quantprep)', url: 'https://quantprep.io/mental_math_optiver_intro', note: 'Optiver 80-in-8 clone — gate ≥56, competitive ≥70' },
+    { name: '80-in-8 (everythingquant)', url: 'https://everythingquant.com/online-assessments/optiver-mental-maths-tool/', note: 'second 80-in-8 practice tool' },
+  ]},
+  { group: 'Live market-making', items: [
+    { name: 'Figgie', url: 'https://www.figgie.com/', note: "Jane Street's card game — fair value, spread, adverse selection" },
+  ]},
+  { group: 'Fresh, firm-tagged questions', items: [
+    { name: 'PuzzledQuant', url: 'https://puzzledquant.com/', note: 'company-tagged recent questions + JS puzzle archive' },
+    { name: 'Brainstellar', url: 'https://brainstellar.com/', note: 'free classic puzzle sets' },
+    { name: 'OpenQuant', url: 'https://openquant.co/questions', note: 'more interview questions' },
+    { name: 'Glassdoor', url: 'https://www.glassdoor.com/Interview/index.htm', note: 'filter to your target firms' },
+  ]},
+  { group: 'Mocks', items: [
+    { name: 'Career Design (book a human mock)', url: 'https://careerdesign.dartmouth.edu/channels/prepare-for-an-interview/', note: 'PRIMARY — book a 30-min mock via Handshake (or careerdesign@dartmouth.edu); bring Quant Prep/Mock Interviews/MOCK_SCRIPTS.md (rounds + rubric) + BEHAVIORAL_BANK.md as the brief' },
+    { name: 'QuantBrainteasers', url: 'https://quantbrainteasers.com/', note: 'free timed mock mode + readiness score — quant-specific (interim AI stand-in)' },
+  ]},
+];
+function renderQuantResources() {
+  var groups = QUANT_LINKS.map(function (g) {
+    var links = g.items.map(function (it) {
+      return '<a href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" '
+        + 'style="display:inline-block;font-family:var(--sans);font-size:12px;font-weight:600;color:var(--acc);'
+        + 'background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:3px 10px;text-decoration:none;margin:0 6px 6px 0" '
+        + 'title="' + esc(it.note) + '">' + esc(it.name) + ' ↗</a>';
+    }).join('');
+    return '<div style="margin-top:9px">'
+      + '<p style="font-family:var(--sans);font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:0 0 5px">' + esc(g.group) + '</p>'
+      + '<div class="row" style="flex-wrap:wrap">' + links + '</div></div>';
+  }).join('');
+  return '<div class="card" style="margin-bottom:16px">'
+    + '<div class="rowsb" style="margin-bottom:2px"><p class="sh" style="margin:0">External prep — the live layer</p>'
+    + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut)">opens in a new tab</span></div>'
+    + '<p style="font-family:var(--sans);font-size:11.5px;color:var(--mut);margin:4px 0 2px;line-height:1.55">'
+    + 'Reps the problem bank can’t train. Pair these with the daily loop above; log Zetamac / Figgie scores in the prep card.</p>'
+    + groups + '</div>';
+}
 function renderQuantHome() {
+  // One-click path to the thing that matters: the recommended drill, pinned to
+  // the very top so a returning user never scrolls past prep/theme/dashboard
+  // cards to start reps. The dashboard below repeats it with full context.
+  var quick = '';
+  if (S.quantBanks.length) {
+    var qrec = _quantRecommendation();
+    quick = '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--acc)">'
+      + '<div class="rowsb" style="gap:14px;align-items:center;flex-wrap:wrap">'
+      + '<div style="min-width:0;flex:1"><p style="font-family:var(--sans);font-size:13px;font-weight:700;color:var(--tx);margin-bottom:3px">Drill now</p>'
+      + '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);line-height:1.5">' + esc(qrec.detail || 'One click starts the highest-value set for today.') + '</p></div>'
+      + '<button class="btn bp" onclick="startQuantRecommended()">' + esc(qrec.label || 'Start drill') + ' &rarr;</button>'
+      + '</div></div>';
+  }
+  // Section jump-nav — the home stacks six cards; this keeps them one click away
+  // instead of a scroll hunt. Pure anchors (no state, no handlers).
+  var navLink = function (id, lbl) {
+    return '<a href="#' + id + '" style="font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--mut);background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:3px 10px;text-decoration:none">' + lbl + '</a>';
+  };
+  var nav = '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+    + navLink('qp-today', 'Today') + navLink('qp-dash', 'Dashboard') + navLink('qp-history', 'History')
+    + navLink('qp-ext', 'External') + navLink('qp-banks', 'Banks') + '</div>';
   var intro = '<p style="font-family:var(--sans);font-size:13px;color:var(--mut);margin:-6px 0 18px;line-height:1.6">'
     + 'Load your Quant Prep Problem Bank or paste a question bank, then grind it rapid-fire with instant scoring — built for mental-math and probability reps. '
     + 'Correct answers fly by; misses pause to show the answer and resurface more often. Items you miss can seed your spaced-review deck.</p>';
@@ -5603,6 +6275,7 @@ function renderQuantHome() {
     + '<input class="inp" id="quant-bank-name" placeholder="Bank name (e.g. Zetamac · Green Book Ch.2)" style="margin-bottom:8px">'
     + '<textarea class="inp" id="quant-import" placeholder="One per line: &#10;47 * 53 | 2491&#10;P(two heads in 2 flips) | 1/4&#10;&#10;…or Q:/A: lines, CSV, JSONL, or a JSON array of {q,a}/{question,solution}." style="height:130px;font-family:var(--mono,monospace);font-size:13px" oninput="setQuantImport(this.value)">' + esc(S.quantImport || '') + '</textarea>'
     + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin:8px 0 10px">Delimiters: <code>|</code>, tab, <code>::</code>, <code>=&gt;</code>. Numbers, decimals, fractions (1/6) and percents (50%) are graded with rounding tolerance; worked solutions are revealed after misses.</p>'
+    + '<p style="font-family:var(--sans);font-size:11px;color:var(--dim);margin:0 0 10px">💡 Tag items with a <code>topic</code> (JSON/JSONL/CSV metadata) to unlock the dashboard, weak-topic drills, and per-topic analytics — plain <code>Q | A</code> banks drill fine but stay analytically thin.</p>'
     + '<button class="btn bp" onclick="importQuantBank()">Add bank</button>'
     + '</div>';
 
@@ -5647,7 +6320,19 @@ function renderQuantHome() {
     banks = empty(SVG_ICONS.check || '', 'No banks yet', 'Paste a question bank above to start drilling');
   }
 
-  return renderPrepToday() + renderQuantNewTheme() + renderQuantDashboard() + intro + importer + (S.quantBanks.length ? '<p class="sh" style="margin:18px 0 10px">Your banks</p>' : '') + banks;
+  // Returning-user view: setup prose collapses once a bank is loaded (the drill,
+  // today card, and analytics are the daily surfaces; the importer is a rare task).
+  var setup = S.quantBanks.length
+    ? '<details style="margin-bottom:16px"><summary style="font-family:var(--sans);font-size:12px;font-weight:600;color:var(--mut);cursor:pointer;padding:4px 2px">Bank setup — load, refresh, or paste a bank</summary>' + importer + '</details>'
+    : intro + importer;
+  return quick + nav
+    + '<div id="qp-today">' + renderPrepToday() + '</div>'
+    + renderQuantNewTheme()
+    + '<div id="qp-dash">' + renderQuantDashboard() + '</div>'
+    + '<div id="qp-history">' + renderQuantHistory() + '</div>'
+    + '<div id="qp-ext">' + renderQuantResources() + '</div>'
+    + '<div id="qp-banks">' + setup
+    + (S.quantBanks.length ? '<p class="sh" style="margin:18px 0 10px">Your banks</p>' : '') + banks + '</div>';
 }
 
 function renderQuantActive() {
@@ -5688,7 +6373,12 @@ function renderQuantActive() {
     + metaLine + '</div>';
 
   var body;
-  if (sess.showResult && sess.lastResult) {
+  if (sess.timeUp) {
+    // The "time's up" beat — a moment to register the cut before scoring.
+    body = '<div class="card fu" role="status" style="border-left:3px solid var(--gold);text-align:center;padding:28px 18px">'
+      + '<p style="font-family:var(--sans);font-size:24px;font-weight:700;color:var(--gold);letter-spacing:.05em">TIME&rsquo;S UP</p>'
+      + '<p style="font-family:var(--sans);font-size:12.5px;color:var(--mut);margin-top:6px">Scoring your sprint&hellip;</p></div>';
+  } else if (sess.showResult && sess.lastResult) {
     var ok = !!sess.lastResult.correct;
     var resultCol = ok ? '#49c47e' : '#d05555';
     body = '<div class="card fu" style="border-left:3px solid ' + resultCol + '">'
@@ -5718,8 +6408,8 @@ function renderQuantActive() {
       + '<span style="font-family:var(--sans);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-right:1px" title="How sure are you? Confident misses are tracked separately.">Confidence</span>'
       + '<div class="row" role="group" aria-label="Confidence" style="gap:5px">' + confBtn('sure', 'Sure') + confBtn('unsure', 'Unsure') + confBtn('guess', 'Guess') + '</div>'
       + '<button class="btn bp" onclick="quantSubmit()">Submit</button>'
-      + '<button class="btn bg btn-sm" onclick="quantSkip()">Skip</button>'
-      + '<button class="btn bg btn-sm" onclick="quantToggleHint()">Hint</button>'
+      + '<button class="btn bg btn-sm" onclick="quantSkip()" title="Keyboard: Esc">Skip (esc)</button>'
+      + '<button class="btn bg btn-sm" onclick="quantToggleHint()" title="Keyboard: ?">Hint (?)</button>'
       + '</div></div>';
   }
   return statsBar + prompt + body;
@@ -5889,7 +6579,24 @@ function renderProgress() {
       + planBtn + '</div>';
   }
 
-  return readinessSection + calibCard + plannerSection + renderStats();
+  // Focus time (Pomodoro) analytics
+  var _ps = _pomoStats(S.pomoLog, Date.now());
+  var focusCard = '';
+  if (_ps.totalSessions > 0 || _ps.todayMin > 0) {
+    var _tile = function (val, lbl) {
+      return '<div style="flex:1;text-align:center"><div style="font-family:var(--sans);font-size:22px;font-weight:700;color:var(--acc)">' + val + '</div>'
+        + '<div style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-top:2px">' + lbl + '</div></div>';
+    };
+    focusCard = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--acc)">'
+      + '<p class="sh" style="margin-bottom:12px">Focus time · Pomodoro</p>'
+      + '<div class="row" style="gap:10px;align-items:stretch">'
+      + _tile(_ps.todayMin + '<span style="font-size:13px;color:var(--mut)"> min</span>', 'Today')
+      + _tile(_ps.todaySessions, 'Sessions today')
+      + _tile(_ps.totalSessions, 'All-time sessions')
+      + _tile(_ps.totalMin >= 60 ? (_ps.totalMin / 60).toFixed(1) + '<span style="font-size:13px;color:var(--mut)"> h</span>' : _ps.totalMin + '<span style="font-size:13px;color:var(--mut)"> min</span>', 'All-time focus')
+      + '</div></div>';
+  }
+  return readinessSection + focusCard + calibCard + plannerSection + renderStats();
 }
 
 // ════════════════════════════════════════════
@@ -6041,7 +6748,7 @@ function renderMockExam() {
   var qCard = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--gold)">'
     + bloom + skippedBadge
     + (q.topic ? badge(q.topic, '#6b8ef5') + ' ' : '')
-    + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;margin-top:10px;color:var(--tx)">' + esc(q.question) + '</p>'
+    + '<p class="math-rich" style="font-family:var(--serif);font-size:19px;font-style:italic;line-height:1.7;margin-top:10px;color:var(--tx)">' + _mathNormalize(q.question) + '</p>'
     + '</div>';
 
   var ansCard;
@@ -6050,7 +6757,7 @@ function renderMockExam() {
     ansCard = '<div class="card">'
       + '<p style="font-family:var(--sans);font-size:11px;color:var(--mut);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Your answer · locked</p>'
       + '<div style="padding:12px 16px;background:var(--bg);border-radius:7px;border:1px solid var(--brd);margin-bottom:14px">'
-      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + esc(existingAns.answer || '—') + '</p>'
+      + '<p class="math-rich" style="font-family:var(--serif);font-size:14px;color:var(--tx);line-height:1.65">' + _mathNormalize(existingAns.answer || '—') + '</p>'
       + '</div>'
       + '<div class="row" style="gap:8px">'
       + (qi > 0 ? '<button class="btn bg btn-sm" onclick="navMockExam(' + (qi - 1) + ')">&#x2190; Back</button>' : '')
@@ -6219,7 +6926,7 @@ function renderExamReport() {
           + '<div class="rowsb" style="cursor:pointer;gap:10px" onclick="toggleExamItem(' + i + ')">'
           + '<div style="display:flex;gap:8px;flex:1;overflow:hidden;align-items:' + (expanded ? 'flex-start' : 'center') + '">'
           + '<div style="width:3px;flex-shrink:0;align-self:stretch;border-radius:2px;background:' + col + ';margin-top:1px"></div>'
-          + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);flex:1;margin:0;overflow:hidden;text-overflow:ellipsis;' + (expanded ? '' : 'white-space:nowrap') + '">' + esc(item.q.question) + '</p>'
+          + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);flex:1;margin:0;overflow:hidden;text-overflow:ellipsis;' + (expanded ? '' : 'white-space:nowrap') + '">' + _mathNormalize(item.q.question) + '</p>'
           + '</div>'
           + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' + badge(badgeLabel, col) + chevron + '</div>'
           + '</div>';
@@ -6237,7 +6944,7 @@ function renderExamReport() {
             row += '<div class="row" style="margin-bottom:10px;gap:6px">' + pips
               + '<span style="font-family:var(--sans);font-size:11px;color:' + c2 + ';font-weight:600;text-transform:uppercase;letter-spacing:.06em">' + scoreLabel + '</span></div>';
             if (item.result.feedback) {
-              row += '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.65;margin-bottom:10px">' + esc(item.result.feedback) + '</p>';
+              row += '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.65;margin-bottom:10px">' + _mathNormalize(item.result.feedback) + '</p>';
             }
           } else {
             row += '<p style="font-family:var(--sans);font-size:12px;color:var(--mut);margin-bottom:10px">Skipped — no answer recorded</p>';
@@ -6247,7 +6954,7 @@ function renderExamReport() {
           if (item.answer) {
             row += '<div style="padding:10px 14px;background:var(--card);border-radius:6px;border:1px solid var(--brd);margin-bottom:8px">'
               + '<p style="font-family:var(--sans);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Your answer</p>'
-              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + esc(item.answer) + '</p>'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + _mathNormalize(item.answer) + '</p>'
               + '</div>';
           }
 
@@ -6256,7 +6963,7 @@ function renderExamReport() {
           if (modelAns) {
             row += '<div style="padding:10px 14px;background:var(--card2);border-radius:6px;border:1px solid var(--brd);margin-bottom:8px">'
               + '<p style="font-family:var(--sans);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Model answer</p>'
-              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + esc(modelAns) + '</p>'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:13px;color:var(--tx);line-height:1.6">' + _mathNormalize(modelAns) + '</p>'
               + '</div>';
           }
 
@@ -6268,7 +6975,7 @@ function renderExamReport() {
               + '<summary style="font-family:var(--sans);font-size:11px;color:var(--acc);cursor:pointer;letter-spacing:.03em">Library source'
               + (item.q.sourceSection ? ' · ' + esc(item.q.sourceSection) : '') + '</summary>'
               + '<div style="margin-top:8px;padding:10px 14px;background:var(--bg);border-radius:6px;border:1px solid var(--brd)">'
-              + '<p class="math-rich" style="font-family:var(--serif);font-size:12px;color:var(--mut);line-height:1.7;white-space:pre-wrap">' + esc(excerpt) + '</p>'
+              + '<p class="math-rich" style="font-family:var(--serif);font-size:12px;color:var(--mut);line-height:1.7;white-space:pre-wrap">' + _mathNormalize(excerpt) + '</p>'
               + (item.q.sourceSection ? '<div style="margin-top:8px">' + _srcCiteLink(item.q.sourceSection) + '</div>' : '')
               + '</div></details>';
           }
@@ -6326,13 +7033,13 @@ function renderLearnNew() {
     + '<div class="rowsb" style="margin-bottom:12px">'
     + '<p style="font-family:var(--sans);font-size:15px;font-weight:700;color:var(--tx)">' + esc(guide.sectionTitle) + '</p>'
     + '<button class="btn bg btn-sm" onclick="S.studyGuide=null;render()">Change section</button></div>'
-    + '<div class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + esc(guide.content) + '</div>'
+    + '<div class="math-rich" style="font-family:var(--serif);font-size:15px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + _mathNormalize(guide.content) + '</div>'
     + '</div>';
 
   var explainCard = guide.explainResult
     ? '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--acc)">'
       + '<p class="sh" style="margin-bottom:8px">Explanation</p>'
-      + '<div class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + esc(guide.explainResult) + '</div>'
+      + '<div class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + _mathNormalize(guide.explainResult) + '</div>'
       + '</div>'
     : (guide.explaining
       ? '<div class="card" style="text-align:center;padding:24px"><div class="spin"></div><p style="font-family:var(--sans);font-size:14px;color:var(--mut);margin-top:12px">Generating explanation…</p></div>'
@@ -6423,7 +7130,7 @@ function renderExplainBack() {
   var resultCard = '<div class="card" style="margin-bottom:14px">'
     + '<div class="rowsb" style="margin-bottom:12px"><p style="font-family:var(--sans);font-size:14px;font-weight:700;color:var(--tx)">Analysis: ' + esc(eb.topic) + '</p>'
     + '<button class="btn bg btn-sm" onclick="S.explainBack=null;render()">Try again</button></div>'
-    + '<div class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + esc(eb.result) + '</div>'
+    + '<div class="math-rich" style="font-family:var(--serif);font-size:14px;line-height:1.8;color:var(--tx);white-space:pre-wrap">' + _mathNormalize(eb.result) + '</div>'
     + (eb.gaps && eb.gaps.length ? '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)">'
       + '<p style="font-family:var(--sans);font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px">GAPS FOUND — added to review deck:</p>'
       + eb.gaps.map(function(g) { return '<p style="font-family:var(--sans);font-size:13px;color:var(--tx);padding:4px 0">• ' + esc(g) + '</p>'; }).join('')
@@ -6552,13 +7259,216 @@ async function genStudyPlan() {
   render();
 }
 
+// ── Attention layer: aggregate pending tasks/TODOs into one urgency list ──────
+// Defensive (every source guarded) so a bad slice never breaks the shell. Each
+// item: {key, label, short, urgency:'now'|'soon'|'info', tab}. Sorted urgent-first.
+function _attentionItems(nowMs) {
+  nowMs = nowMs || Date.now();
+  var items = [];
+  try { // due flashcards (FSRS)
+    var due = (S.cards || []).filter(function (c) { return !isCardSuspended(c) && c.fsrs && fsrsIsDue(c.fsrs); }).length;
+    if (due > 0) items.push({ key: 'cards', label: due + ' card' + (due === 1 ? '' : 's') + ' due for review', short: due + ' due', urgency: due >= 5 ? 'now' : 'soon', tab: 'study' });
+  } catch (e) {}
+  try { // scheduled assessment countdown
+    var cd = S.nextInterview ? _prepCountdown(S.nextInterview, nowMs) : null;
+    if (cd && !cd.far) {
+      var firm = S.nextInterview.firm ? S.nextInterview.firm + ' ' : '';
+      var lbl = cd.stale ? firm + cd.label + ' — debrief & log' : firm + cd.label + (cd.days === 0 ? ' is TODAY' : ' in ' + cd.days + 'd');
+      var shrt = cd.stale ? firm + 'debrief' : firm + (cd.days === 0 ? 'TODAY' : 'T-' + cd.days);
+      items.push({ key: 'exam', label: lbl, short: shrt.trim(), urgency: (cd.stale || cd.days <= 1) ? 'now' : cd.days <= 3 ? 'soon' : 'info', tab: 'study' });
+    }
+  } catch (e) {}
+  try { // stale drill momentum
+    var perf = _prepPerf();
+    if (perf && perf.daysSince != null && perf.daysSince >= 2) items.push({ key: 'drill', label: 'No drill in ' + perf.daysSince + ' days — run a set', short: 'drill ' + perf.daysSince + 'd', urgency: perf.daysSince >= 4 ? 'now' : 'soon', tab: 'study' });
+  } catch (e) {}
+  try { // unmet speed gates
+    var sp = _speedPerf(), wk = ((_prepToday().week || {}).n) || 1;
+    ['zetamac', 'optiver'].forEach(function (k) {
+      var b = sp[k], tgt = _speedTarget(k, wk);
+      if (b && tgt != null && b.last < tgt) items.push({ key: 'speed-' + k, label: (k === 'zetamac' ? 'Zetamac' : 'Optiver 80-in-8') + ' ' + b.last + ' < target ' + tgt, short: (k === 'zetamac' ? 'Zetamac' : '80-in-8') + ' ' + b.last + '/' + tgt, urgency: 'soon', tab: 'study' });
+    });
+  } catch (e) {}
+  var rank = { now: 0, soon: 1, info: 2 };
+  items.sort(function (a, b) { return (rank[a.urgency] - rank[b.urgency]); });
+  return items;
+}
+// Pure formatter (unit-tested): collapse the list into a headline for the chip.
+function _attentionSummary(items) {
+  items = items || [];
+  var now = items.filter(function (i) { return i.urgency === 'now'; }).length;
+  var top = items[0] || null;
+  return { count: items.length, now: now, top: top, urgency: top ? top.urgency : 'none' };
+}
+// Attention dropdown: toggle open, close, and navigate to an item's surface.
+function toggleAttention() { S.attnOpen = !S.attnOpen; if (S.attnOpen) S.pomoOpen = false; rebuildTopbar(); }
+function closeAttention() { if (S.attnOpen) { S.attnOpen = false; rebuildTopbar(); } }
+function attnNavTo(tab) { S.attnOpen = false; setTab(tab); }
+// Per-row quick action: do the item's primary next step in one click.
+function _attnActionLabel(key) {
+  if (key === 'cards') return 'Review';
+  if (key === 'drill') return 'Drill';
+  if (key === 'exam') return 'Ask AI';
+  if (key.indexOf('speed-') === 0) return 'Zetamac ↗';
+  return '';
+}
+function attnOpenUrl(url) { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+function attnAct(key) {
+  S.attnOpen = false;
+  if (key === 'cards') { setTab('study'); startTodaySession('standard'); }
+  else if (key === 'drill') { setTab('study'); startPrepDrill(); }
+  else if (key === 'exam') { setTab('study'); askExamFeedback(); }
+  else if (key.indexOf('speed-') === 0) { attnOpenUrl('https://arithmetic.zetamac.com/'); rebuildTopbar(); }
+  else { setTab('study'); }
+}
+
+// ── System-wide Pomodoro timer (pomotroid-inspired) + focus analytics ────────
+var _pomoTimer = null;
+var POMO_MODES = { focus: 'Focus', short: 'Short break', long: 'Long break' };
+// ---- pure helpers (unit-tested) ----
+function _pomoDuration(mode, cfg) { cfg = cfg || S.pomoCfg; return (cfg[mode] || 25) * 60000; }
+function _pomoFormat(ms) {
+  var s = Math.round(Math.max(0, ms) / 1000), m = Math.floor(s / 60), sec = s - m * 60;
+  return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+// Next mode after one completes: focus → long every Nth round else short; break → focus.
+function _pomoNext(mode, round, cfg) {
+  cfg = cfg || S.pomoCfg;
+  if (mode === 'focus') return { mode: (round % (cfg.longEvery || 4) === 0) ? 'long' : 'short', round: round };
+  return { mode: 'focus', round: round + 1 };
+}
+// Aggregate completed focus sessions into headline analytics.
+function _pomoStats(log, nowMs) {
+  log = log || []; nowMs = nowMs || Date.now();
+  var dayStart = new Date(nowMs); dayStart.setHours(0, 0, 0, 0); dayStart = dayStart.getTime();
+  var todayMin = 0, todaySessions = 0, totalMin = 0;
+  log.forEach(function (e) { var mn = +e.min || 0; totalMin += mn; if (e.ts >= dayStart) { todayMin += mn; todaySessions++; } });
+  return { todayMin: todayMin, todaySessions: todaySessions, totalSessions: log.length, totalMin: totalMin };
+}
+// ---- engine ----
+function savePomo() { lsSet('sd_pomolog', S.pomoLog); lsSet('sd_pomocfg', S.pomoCfg); }
+function _pomoRemaining() { return S.pomo.running ? Math.max(0, S.pomo.endTs - Date.now()) : S.pomo.remainingMs; }
+function _pomoClear() { if (_pomoTimer) { clearInterval(_pomoTimer); _pomoTimer = null; } }
+function _pomoTick() {
+  if (!S.pomo.running) return;
+  var rem = Math.max(0, S.pomo.endTs - Date.now());
+  S.pomo.remainingMs = rem;
+  if (rem <= 0) { _pomoComplete(); return; }
+  renderPomo();
+}
+function pomoStart() {
+  if (S.pomo.running) return;
+  if (S.pomo.remainingMs <= 0) S.pomo.remainingMs = _pomoDuration(S.pomo.mode);
+  S.pomo.running = true;
+  S.pomo.endTs = Date.now() + S.pomo.remainingMs;
+  _pomoClear(); _pomoTimer = setInterval(_pomoTick, 250);
+  renderPomo();
+}
+function pomoPause() {
+  if (!S.pomo.running) return;
+  S.pomo.remainingMs = Math.max(0, S.pomo.endTs - Date.now());
+  S.pomo.running = false; _pomoClear(); renderPomo();
+}
+function pomoToggle() { if (S.pomo.running) pomoPause(); else pomoStart(); }
+function pomoReset() { S.pomo.running = false; _pomoClear(); S.pomo.remainingMs = _pomoDuration(S.pomo.mode); renderPomo(); }
+function pomoSetMode(mode) {
+  if (!POMO_MODES[mode]) return;
+  S.pomo.running = false; _pomoClear();
+  S.pomo.mode = mode; S.pomo.remainingMs = _pomoDuration(mode); renderPomo();
+}
+function pomoSkip() {
+  var nx = _pomoNext(S.pomo.mode, S.pomo.round, S.pomoCfg);
+  S.pomo.running = false; _pomoClear();
+  S.pomo.mode = nx.mode; S.pomo.round = nx.round; S.pomo.remainingMs = _pomoDuration(nx.mode); renderPomo();
+}
+function _pomoComplete() {
+  _pomoClear(); S.pomo.running = false;
+  var doneMode = S.pomo.mode;
+  if (doneMode === 'focus') {
+    S.pomoLog = S.pomoLog || [];
+    S.pomoLog.push({ ts: Date.now(), min: S.pomoCfg.focus });
+    if (S.pomoLog.length > 2000) S.pomoLog = S.pomoLog.slice(-2000);
+    savePomo();
+  }
+  var nx = _pomoNext(doneMode, S.pomo.round, S.pomoCfg);
+  S.pomo.mode = nx.mode; S.pomo.round = nx.round; S.pomo.remainingMs = _pomoDuration(nx.mode);
+  if (S.pomoCfg.sound) _pomoBeep(doneMode === 'focus');
+  toast(doneMode === 'focus' ? 'Focus done — ' + POMO_MODES[nx.mode].toLowerCase() + ' time.' : POMO_MODES[nx.mode] + ' over — back to focus.');
+  render();
+}
+function _pomoBeep(isFocusEnd) {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    var ctx = new AC(), seq = isFocusEnd ? [660, 880] : [880, 660];
+    seq.forEach(function (f, i) {
+      var o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + i * 0.18;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.15, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+      o.connect(g); g.connect(ctx.destination); o.start(t0); o.stop(t0 + 0.18);
+    });
+    setTimeout(function () { try { ctx.close(); } catch (e) {} }, 700);
+  } catch (e) {}
+}
+function pomoTogglePanel() { S.pomoOpen = !S.pomoOpen; if (S.pomoOpen && S.attnOpen) { S.attnOpen = false; rebuildTopbar(); } else { renderPomo(); } }
+function pomoClosePanel() { if (S.pomoOpen) { S.pomoOpen = false; renderPomo(); } }
+function pomoToggleSound() { S.pomoCfg.sound = !S.pomoCfg.sound; savePomo(); renderPomo(); }
+// ---- render ----
+function _pomoColor(mode) { return mode === 'focus' ? 'var(--acc)' : mode === 'short' ? '#2f9e8f' : '#7a5cc0'; }
+function _pomoRing(size, stroke, mode, frac) {
+  var r = (size - stroke) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, frac))), h = size / 2;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="transform:rotate(-90deg)">'
+    + '<circle cx="' + h + '" cy="' + h + '" r="' + r + '" fill="none" stroke="var(--brd)" stroke-width="' + stroke + '"/>'
+    + '<circle cx="' + h + '" cy="' + h + '" r="' + r + '" fill="none" stroke="' + _pomoColor(mode) + '" stroke-width="' + stroke + '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '" style="transition:stroke-dashoffset .25s linear"/></svg>';
+}
+function renderPomo() {
+  var el = document.getElementById('topbar-pomo'); if (!el) return;
+  // frac = fraction of time REMAINING → ring is full at start and depletes (pomotroid style)
+  var rem = _pomoRemaining(), total = _pomoDuration(S.pomo.mode), frac = total ? rem / total : 0, col = _pomoColor(S.pomo.mode);
+  var mini = '<button class="pomo-chip" onclick="pomoTogglePanel()" aria-haspopup="dialog" aria-expanded="' + (S.pomoOpen ? 'true' : 'false') + '" title="Pomodoro — ' + POMO_MODES[S.pomo.mode] + (S.pomo.running ? ' (running)' : '') + '" aria-label="Pomodoro ' + POMO_MODES[S.pomo.mode] + ' ' + _pomoFormat(rem) + '">'
+    + '<span class="pomo-mini">' + _pomoRing(20, 3, S.pomo.mode, frac) + '</span>'
+    + '<span class="pomo-time" style="color:' + col + '">' + _pomoFormat(rem) + '</span></button>';
+  var panel = '';
+  if (S.pomoOpen) {
+    var st = _pomoStats(S.pomoLog, Date.now()), every = S.pomoCfg.longEvery || 4, pos = (S.pomo.round - 1) % every, dots = '';
+    for (var i = 0; i < every; i++) dots += '<span class="pomo-dot" style="background:' + (i < pos ? col : 'var(--brd)') + '"></span>';
+    var modeBtns = ['focus', 'short', 'long'].map(function (m) { return '<button class="pomo-mode' + (S.pomo.mode === m ? ' act' : '') + '" onclick="pomoSetMode(\'' + m + '\')">' + POMO_MODES[m] + '</button>'; }).join('');
+    panel = '<div class="pomo-backdrop" onclick="pomoClosePanel()"></div>'
+      + '<div class="pomo-panel" role="dialog" aria-label="Pomodoro timer">'
+      + '<div class="pomo-modes">' + modeBtns + '</div>'
+      + '<div class="pomo-dial">' + _pomoRing(168, 10, S.pomo.mode, frac)
+      + '<div class="pomo-dial-c"><div class="pomo-dial-time" style="color:' + col + '">' + _pomoFormat(rem) + '</div>'
+      + '<div class="pomo-dial-lbl">' + POMO_MODES[S.pomo.mode] + ' · round ' + S.pomo.round + '</div></div></div>'
+      + '<div class="pomo-dots">' + dots + '</div>'
+      + '<div class="pomo-ctrls">'
+      + '<button class="btn bp" style="min-width:104px" onclick="pomoToggle()">' + (S.pomo.running ? '❚❚ Pause' : '▶ Start') + '</button>'
+      + '<button class="btn bg btn-sm" onclick="pomoReset()" title="Reset" aria-label="Reset">↺</button>'
+      + '<button class="btn bg btn-sm" onclick="pomoSkip()" title="Skip to next" aria-label="Skip">⇥</button>'
+      + '<button class="btn bg btn-sm" onclick="pomoToggleSound()" title="Toggle sound" aria-label="Toggle sound">' + (S.pomoCfg.sound ? '🔔' : '🔕') + '</button></div>'
+      + '<div class="pomo-stats">Today <b style="color:var(--tx)">' + st.todayMin + ' min</b> · ' + st.todaySessions + ' session' + (st.todaySessions === 1 ? '' : 's') + ' &nbsp;·&nbsp; All-time ' + st.totalSessions + ' · ' + (st.totalMin >= 60 ? (st.totalMin / 60).toFixed(1) + ' h' : st.totalMin + ' min') + '</div></div>';
+  }
+  el.innerHTML = mini + panel;
+}
+
 function buildSidebar() {
   var sb = document.getElementById('sidebar');
+  var _attnByTab = {};
+  _attentionItems(Date.now()).forEach(function (i) {
+    var e = _attnByTab[i.tab] || { n: 0, urg: 'info' };
+    e.n++;
+    if (i.urgency === 'now') e.urg = 'now';
+    else if (i.urgency === 'soon' && e.urg !== 'now') e.urg = 'soon';
+    _attnByTab[i.tab] = e;
+  });
   var am = MODELS.find(function(m) { return m.id === S.cfg.activeModel; }) || MODELS[0];
   var html = '<div class="sb-logo">S</div>';
   TABS.forEach(function(t) {
-    html += '<button class="nb' + (S.tab === t.id ? ' act' : '') + '" aria-label="' + esc(t.label) + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + ' onclick="setTab(\'' + t.id + '\')">'
-          + (TAB_ICONS[t.id] || '') + '<span class="tt">' + t.label + '</span></button>';
+    var at = _attnByTab[t.id];
+    var aria = t.label + (at ? ' (' + at.n + ' pending)' : '');
+    html += '<button class="nb' + (S.tab === t.id ? ' act' : '') + '" aria-label="' + esc(aria) + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + ' onclick="setTab(\'' + t.id + '\')">'
+          + (TAB_ICONS[t.id] || '') + '<span class="tt">' + t.label + (at ? ' — ' + at.n + ' pending' : '') + '</span>'
+          + (at ? '<span class="nb-badge nb-badge-' + at.urg + '">' + at.n + '</span>' : '') + '</button>';
   });
   html += '<div class="sb-spacer"></div><div class="sb-div"></div>';
   if (S.streak.count >= 2) {
@@ -6580,6 +7490,35 @@ function rebuildTopbar() {
   var allTabs = TABS.concat([{ id:'settings', label:'Settings' }]);
   var t  = allTabs.find(function(t)  { return t.id === S.tab; }) || TABS[0];
   document.getElementById('topbar-title').textContent = t.label;
+  var attnEl = document.getElementById('topbar-attention');
+  if (attnEl) {
+    var items = _attentionItems(Date.now()), sum = _attentionSummary(items);
+    if (!items.length) { S.attnOpen = false; attnEl.innerHTML = ''; }
+    else {
+      var more = items.length > 1 ? ' <span style="opacity:.65;font-weight:600">+' + (items.length - 1) + '</span>' : '';
+      var full = items.map(function (i) { return i.label; }).join('  ·  ');
+      var panel = '';
+      if (S.attnOpen) {
+        var rows = items.map(function (i) {
+          var c = i.urgency === 'now' ? '#d05555' : i.urgency === 'soon' ? 'var(--gold)' : 'var(--acc)';
+          var actLbl = _attnActionLabel(i.key);
+          return '<div class="attn-row">'
+            + '<button class="attn-rmain" role="menuitem" onclick="attnNavTo(\'' + i.tab + '\')">'
+            + '<span class="attn-rdot" style="background:' + c + '"></span>'
+            + '<span class="attn-rlabel">' + esc(i.label) + '</span></button>'
+            + (actLbl ? '<button class="attn-raction" onclick="attnAct(\'' + i.key + '\')">' + actLbl + '</button>' : '')
+            + '</div>';
+        }).join('');
+        panel = '<div class="attn-backdrop" onclick="closeAttention()"></div>'
+          + '<div class="attn-panel" role="menu" aria-label="Pending tasks">'
+          + '<div class="attn-panel-hd"><span>Pending</span><span>' + items.length + '</span></div>'
+          + rows + '</div>';
+      }
+      attnEl.innerHTML = '<button class="attn-chip attn-' + sum.urgency + '" onclick="toggleAttention()" aria-haspopup="menu" aria-expanded="' + (S.attnOpen ? 'true' : 'false') + '" title="' + esc(full) + '" aria-label="' + esc(items.length + ' pending: ' + full) + '">'
+        + '<span class="attn-dot"></span><span class="attn-txt">' + esc(sum.top.short) + '</span>' + more + '</button>' + panel;
+    }
+  }
+  renderPomo();
   document.getElementById('topbar-model').innerHTML =
     '<div onclick="setTab(\'settings\')" style="display:flex;align-items:center;gap:6px;padding:4px 10px;'
     + 'background:' + am.col + '14;border:1px solid ' + am.col + '28;border-radius:20px;cursor:pointer">'
@@ -7049,7 +7988,7 @@ async function submitQ() {
       var el = document.getElementById('grade-stream');
       if (el) {
         var preview = extractStreamFeedback(full);
-        el.innerHTML = esc(preview || '•••');
+        el.innerHTML = _mathNormalize(preview || '•••');
         clearTimeout(_mathStreamTimer);
         _mathStreamTimer = setTimeout(function() {
           if (window.renderMathInElement && el.parentNode) { try { renderMathInElement(el, _katexOpts); } catch(e) {} }
@@ -7632,6 +8571,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     var tag = (e.target.tagName || '').toLowerCase();
     var typing = tag === 'input' || tag === 'textarea' || tag === 'select';
 
+    if (e.key === 'Escape' && S.attnOpen) { e.preventDefault(); S.attnOpen = false; rebuildTopbar(); return; }
+    if (e.key === 'Escape' && S.pomoOpen) { e.preventDefault(); S.pomoOpen = false; renderPomo(); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.tab === 'study' && S.studyIntent === 'drill' && !S.result && _gradingStream === null) { submitQ(); return; }
     // After grading in Drill, plain Enter advances to the next question (completes the keyboard loop).
     if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && S.tab === 'study' && S.studyIntent === 'drill' && S.result && _gradingStream === null && !typing) { e.preventDefault(); nextQ(); return; }
@@ -7647,6 +8588,14 @@ document.addEventListener('DOMContentLoaded', async function() {
           else if (e.key === '4') rateCard(todayItem.id, 4);
         }
       }
+    }
+
+    // Quant drill rapid-fire verbs: Esc skips, ? toggles the hint. Bound only
+    // while answering (not on the result screen, where Enter already advances),
+    // and on keys the numeric answer box can't need — digits stay free to type.
+    if (S.tab === 'study' && S.studyIntent === 'quant' && S.quant && S.quant.active && !S.quant.showResult && !S.quant.timeUp) {
+      if (e.key === 'Escape') { e.preventDefault(); quantSkip(); return; }
+      if (e.key === '?') { e.preventDefault(); quantToggleHint(); return; }
     }
 
     if (S.tab === 'library' && S.librarySection === 'cards' && !typing) {
